@@ -1,0 +1,1772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ANASHRAW.AI — WinGo Predictor</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --bg:#000;--sur:#050f05;--bdr:#0f2b0f;--dim:#003a0f;
+  --g:#00ff41;--g2:#00cc33;--g3:#007a1e;
+  --r:#ff0040;--y:#ffe000;--c:#00ffea;--v:#bf7fff;
+  --txt:#b8ffb8;--mut:#3a6b3a;
+  --glow:0 0 10px #00ff41,0 0 22px #00ff4166;
+  --glsm:0 0 6px #00ff41,0 0 12px #00ff4133;
+  --cglow:0 0 8px #00ffea,0 0 18px #00ffea55;
+  --rglow:0 0 8px #ff0040,0 0 18px #ff004055;
+  --vglow:0 0 8px #bf7fff,0 0 18px #bf7fff55;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overscroll-behavior:none;}
+body{
+  background:var(--bg);color:var(--g);
+  font-family:'Share Tech Mono',monospace;
+  min-height:100vh;overflow-x:hidden;
+}
+/* CRT scanlines */
+body::after{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px);
+  pointer-events:none;z-index:9998;
+}
+/* Matrix canvas */
+#mc{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;opacity:.05;pointer-events:none;}
+
+/* ─── OVERLAYS ─────────────────────────────── */
+.overlay{
+  position:fixed;inset:0;z-index:10001;
+  display:flex;align-items:center;justify-content:center;
+  padding:16px;background:rgba(0,0,0,.96);
+}
+.overlay.hidden{display:none!important;}
+
+/* MAINTENANCE z:10003 */
+#ovMaintenance{z-index:10003;background:#000;flex-direction:column;gap:16px;text-align:center;}
+.maint-icon{font-size:52px;animation:pulse 2s infinite;}
+.maint-title{font-family:'Orbitron',monospace;font-size:22px;font-weight:900;color:var(--r);text-shadow:var(--rglow);letter-spacing:.1em;}
+.maint-msg{font-size:12px;color:var(--txt);line-height:1.8;max-width:320px;border:1px solid #330010;border-radius:4px;padding:14px;background:rgba(255,0,64,.05);}
+.maint-sub{font-size:9px;color:var(--mut);letter-spacing:.2em;}
+
+/* PREMIUM LOCK z:10002 */
+#ovPremium{z-index:10002;flex-direction:column;gap:14px;text-align:center;}
+.prem-box{background:var(--sur);border:1px solid var(--v);border-radius:8px;padding:22px 18px;max-width:340px;width:100%;}
+.prem-title{font-family:'Orbitron',monospace;font-size:16px;font-weight:900;color:var(--v);text-shadow:var(--vglow);letter-spacing:.1em;margin-bottom:4px;}
+.prem-sub{font-size:9px;color:var(--mut);letter-spacing:.2em;margin-bottom:16px;}
+.prem-qr{width:160px;height:160px;border:2px solid var(--v);border-radius:4px;object-fit:contain;background:#111;margin:0 auto 14px;display:block;}
+.prem-txt{font-size:10px;color:var(--txt);line-height:1.7;margin-bottom:14px;}
+.prem-keyrow{display:flex;gap:8px;}
+.prem-key-input{flex:1;padding:11px;background:#000;border:1px solid var(--g3);border-radius:4px;color:var(--g);font-family:'Share Tech Mono',monospace;font-size:13px;outline:none;letter-spacing:.1em;}
+.prem-key-input:focus{border-color:var(--g);box-shadow:var(--glsm);}
+
+/* KEY OVERLAY z:10001 */
+#ovKey{z-index:10001;flex-direction:column;align-items:center;justify-content:flex-start;padding:0;overflow-y:auto;}
+.key-inner{width:100%;max-width:420px;padding:16px;display:flex;flex-direction:column;gap:14px;}
+.key-brand{text-align:center;padding:20px 0 0;}
+.key-logo{font-family:'Orbitron',monospace;font-size:26px;font-weight:900;color:var(--g);text-shadow:var(--glow);letter-spacing:.08em;}
+.key-logo span{color:var(--c);}
+.key-by{font-size:8px;color:var(--mut);letter-spacing:.3em;margin-top:3px;}
+.key-box{background:var(--sur);border:1px solid var(--bdr);border-radius:8px;padding:18px;}
+.key-title{font-family:'Orbitron',monospace;font-size:11px;font-weight:700;color:var(--g);letter-spacing:.18em;margin-bottom:14px;text-align:center;}
+.key-input{width:100%;padding:14px;background:#000;border:1px solid var(--g3);border-radius:4px;color:var(--g);font-family:'Share Tech Mono',monospace;font-size:15px;text-align:center;outline:none;letter-spacing:.2em;margin-bottom:10px;}
+.key-input:focus{border-color:var(--g);box-shadow:var(--glsm);}
+.key-input::placeholder{color:var(--mut);letter-spacing:.1em;}
+.key-err{color:var(--r);font-size:9px;text-align:center;min-height:14px;margin-bottom:6px;}
+.key-pay-box{background:#000;border:1px solid var(--bdr);border-radius:6px;padding:14px;text-align:center;}
+.key-pay-title{font-size:8px;color:var(--mut);letter-spacing:.22em;margin-bottom:10px;}
+.key-qr{width:140px;height:140px;border:1px solid var(--g3);border-radius:4px;object-fit:contain;background:#050f05;display:block;margin:0 auto 10px;}
+.key-pay-txt{font-size:9px;color:var(--txt);line-height:1.7;}
+
+/* KICKED z:10004 */
+#ovKicked{z-index:10004;background:#000;flex-direction:column;gap:16px;text-align:center;}
+.kicked-icon{font-size:52px;}
+.kicked-title{font-family:'Orbitron',monospace;font-size:20px;font-weight:900;color:var(--r);text-shadow:var(--rglow);letter-spacing:.1em;}
+.kicked-sub{font-size:10px;color:var(--mut);line-height:1.8;}
+
+/* ─── MAIN APP ─────────────────────────────── */
+#app{position:relative;z-index:2;max-width:600px;margin:0 auto;padding:0 10px 120px;}
+#app.hidden{display:none;}
+
+/* HEADER */
+header{padding:10px 0 8px;border-bottom:1px solid var(--bdr);margin-bottom:10px;}
+.hdr-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.brand-wrap .brand{font-family:'Orbitron',monospace;font-size:20px;font-weight:900;color:var(--g);text-shadow:var(--glow);letter-spacing:.07em;}
+.brand-wrap .brand .ai{color:var(--c);}
+.brand-wrap .brand-sub{font-size:7px;color:var(--mut);letter-spacing:.25em;margin-top:2px;}
+.hdr-right{text-align:right;}
+.clk{font-family:'Orbitron',monospace;font-size:20px;font-weight:700;color:var(--g);text-shadow:var(--glow);}
+.clkd{font-size:7px;color:var(--mut);margin-top:1px;}
+
+/* STATUS CHIPS */
+.chip-row{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0;}
+.chip{
+  padding:3px 7px;border-radius:2px;font-size:7px;font-weight:bold;
+  letter-spacing:.14em;border:1px solid;
+  display:inline-flex;align-items:center;gap:3px;
+}
+.chip-dot{width:4px;height:4px;border-radius:50%;}
+.chip-ok{border-color:var(--g3);color:var(--g);background:rgba(0,255,65,.07);}
+.chip-dot-ok{background:var(--g);box-shadow:0 0 4px var(--g);animation:blink 1.4s infinite;}
+.chip-warn{border-color:#7a5500;color:var(--y);background:rgba(255,224,0,.05);}
+.chip-dot-warn{background:var(--y);animation:blink 1.4s infinite;}
+.chip-off{border-color:#222;color:#444;}
+.chip-dot-off{background:#444;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+
+/* KEY STATUS BAR */
+.key-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--sur);border:1px solid var(--bdr);border-radius:4px;
+  padding:7px 10px;margin:6px 0;flex-wrap:wrap;gap:6px;
+}
+.key-bar-info{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.key-badge{padding:2px 8px;border-radius:2px;font-size:8px;background:rgba(0,255,65,.1);border:1px solid var(--g3);color:var(--g);font-family:'Orbitron',monospace;letter-spacing:.12em;}
+.key-exp{font-size:8px;color:var(--mut);}
+
+/* FIREBASE BAR */
+.fb-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:8px;color:var(--mut);
+  padding:4px 10px;border:1px solid var(--bdr);border-radius:4px;margin:4px 0;
+  background:rgba(0,10,0,.5);
+}
+.fb-bar span{color:var(--g);}
+
+/* COUNTDOWN BAR */
+.cd-bar{
+  background:var(--sur);border:1px solid var(--bdr);border-radius:4px;
+  padding:8px 10px;margin:6px 0;
+}
+.cd-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.cd-label{font-size:8px;color:var(--mut);letter-spacing:.18em;}
+.cd-time{font-family:'Orbitron',monospace;font-size:20px;font-weight:700;color:var(--y);text-shadow:0 0 8px var(--y);}
+.cd-period{font-size:8px;color:var(--mut);}
+.cd-track{height:3px;background:var(--bdr);border-radius:2px;overflow:hidden;}
+.cd-fill{height:100%;background:linear-gradient(90deg,var(--g3),var(--g));border-radius:2px;transition:width .5s linear;}
+.poll-bar{display:flex;align-items:center;gap:6px;font-size:7px;color:var(--mut);margin-top:4px;}
+.poll-dot{width:5px;height:5px;border-radius:50%;background:var(--c);animation:blink 2s infinite;}
+
+/* ─── SECTIONS ─────────────────────────────── */
+.section{margin:10px 0;}
+.sec-hdr{
+  display:flex;align-items:center;gap:6px;
+  padding:7px 10px;background:var(--dim);
+  border:1px solid var(--bdr);border-radius:4px 4px 0 0;
+  cursor:pointer;user-select:none;
+}
+.sec-dots{display:flex;gap:4px;}
+.sec-dot{width:7px;height:7px;border-radius:50%;}
+.sec-title{font-size:8px;color:var(--mut);letter-spacing:.22em;flex:1;text-transform:uppercase;}
+.sec-badge{font-size:7px;padding:1px 6px;background:rgba(0,255,65,.07);border:1px solid var(--g3);border-radius:10px;color:var(--g);}
+.sec-body{
+  background:var(--sur);border:1px solid var(--bdr);
+  border-top:none;border-radius:0 0 4px 4px;padding:12px;
+}
+
+/* LIVE FEED */
+.feed-controls{display:flex;gap:6px;margin-bottom:8px;align-items:center;}
+.feed-box{height:280px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.feed-box::-webkit-scrollbar{width:2px;}
+.feed-box::-webkit-scrollbar-thumb{background:var(--g3);border-radius:2px;}
+.feed-row{
+  display:flex;gap:8px;align-items:center;
+  padding:4px 0;border-bottom:1px solid #050f05;
+  font-size:10px;
+}
+.feed-idx{color:var(--mut);font-size:8px;min-width:22px;}
+.feed-prd{color:var(--mut);font-size:8px;min-width:60px;}
+.feed-num{
+  font-family:'Orbitron',monospace;font-size:18px;font-weight:900;
+  min-width:24px;text-align:center;line-height:1;
+}
+.feed-num.green{color:var(--g);text-shadow:var(--glsm);}
+.feed-num.red{color:var(--r);text-shadow:var(--rglow);}
+.feed-num.violet{color:var(--v);text-shadow:var(--vglow);}
+.feed-badge{padding:2px 6px;border-radius:2px;font-size:7px;font-weight:bold;}
+.badge-green{background:rgba(0,255,65,.12);border:1px solid var(--g3);color:var(--g);}
+.badge-red{background:rgba(255,0,64,.12);border:1px solid #7a0010;color:var(--r);}
+.badge-violet{background:rgba(191,127,255,.12);border:1px solid #5500aa;color:var(--v);}
+.badge-big{background:rgba(0,255,234,.1);border:1px solid #006060;color:var(--c);}
+.badge-small{background:rgba(255,224,0,.1);border:1px solid #7a5500;color:var(--y);}
+.feed-new{animation:newfade .8s ease;}
+@keyframes newfade{from{background:rgba(0,255,65,.12)}to{background:transparent}}
+
+/* PREDICTION */
+.pred-lock{text-align:center;padding:20px;color:var(--mut);font-size:9px;}
+.pred-num-wrap{text-align:center;padding:16px 0 8px;}
+.pred-big-num{
+  font-family:'Orbitron',monospace;font-size:80px;font-weight:900;
+  line-height:1;display:block;
+  text-shadow:var(--glow);
+}
+.pred-num-wrap .badges-row{display:flex;justify-content:center;gap:8px;margin-top:12px;}
+.pred-badge{
+  padding:6px 18px;border-radius:3px;
+  font-family:'Orbitron',monospace;font-size:12px;font-weight:700;
+  letter-spacing:.15em;border:1px solid;
+}
+.pred-analyzing{
+  text-align:center;padding:30px;
+  font-family:'Orbitron',monospace;font-size:14px;color:var(--mut);
+  letter-spacing:.2em;animation:pulse 2s infinite;
+}
+.conf-bars{margin:12px 0;}
+.conf-row{margin:6px 0;}
+.conf-label{display:flex;justify-content:space-between;font-size:8px;color:var(--mut);margin-bottom:3px;}
+.conf-label span:last-child{color:var(--g);}
+.conf-track{height:5px;background:var(--bdr);border-radius:3px;overflow:hidden;}
+.conf-fill{height:100%;border-radius:3px;transition:width .8s ease;}
+.cf-num{background:linear-gradient(90deg,var(--g3),var(--g));}
+.cf-col{background:linear-gradient(90deg,#006060,var(--c));}
+.cf-bs{background:linear-gradient(90deg,#7a5500,var(--y));}
+
+.alts-row{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;}
+.alt-item{
+  background:#000;border:1px solid var(--bdr);border-radius:4px;
+  padding:6px 10px;text-align:center;flex:1;min-width:70px;
+}
+.alt-num{font-family:'Orbitron',monospace;font-size:20px;font-weight:700;}
+.alt-prob{font-size:7px;color:var(--mut);margin-top:2px;}
+
+.reasoning-box{
+  background:#000;border:1px solid var(--bdr);border-radius:4px;
+  padding:10px;margin:10px 0;
+  font-size:9px;color:var(--txt);line-height:1.8;
+}
+.reasoning-title{font-size:7px;color:var(--mut);letter-spacing:.18em;margin-bottom:6px;text-transform:uppercase;}
+
+.analysis-chips{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0;}
+.ana-chip{
+  padding:4px 10px;border-radius:3px;font-size:8px;
+  border:1px solid var(--bdr);color:var(--txt);background:#000;
+}
+.ana-chip.hot{border-color:#7a0010;color:var(--r);}
+.ana-chip.cold{border-color:#006060;color:var(--c);}
+.ana-chip.streak{border-color:var(--g3);color:var(--g);}
+.ana-chip.colrun{border-color:#5500aa;color:var(--v);}
+.ana-chip.neutral{border-color:#333;color:#666;}
+
+/* PREDICTION HISTORY */
+.htbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-height:320px;overflow-y:auto;}
+.htbl-wrap::-webkit-scrollbar{width:2px;height:2px;}
+.htbl-wrap::-webkit-scrollbar-thumb{background:var(--g3);}
+.htbl{width:100%;border-collapse:collapse;font-size:8px;min-width:420px;}
+.htbl th{
+  padding:5px 6px;background:var(--dim);color:var(--mut);
+  font-size:7px;letter-spacing:.15em;text-transform:uppercase;
+  border-bottom:1px solid var(--bdr);text-align:left;
+  font-weight:normal;white-space:nowrap;position:sticky;top:0;
+}
+.htbl td{padding:5px 6px;border-bottom:1px solid #050f05;white-space:nowrap;vertical-align:middle;}
+.htbl tr.win-row td{background:rgba(0,255,65,.04);}
+.htbl tr.loss-row td{background:rgba(255,0,64,.03);}
+.win-badge{color:var(--g);font-weight:bold;}
+.loss-badge{color:var(--r);}
+.pend-badge{color:var(--mut);}
+
+/* STATS */
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0;}
+.stat-c{
+  background:#000;border:1px solid var(--bdr);border-radius:4px;
+  padding:10px 8px;text-align:center;
+}
+.stat-v{font-family:'Orbitron',monospace;font-size:20px;font-weight:700;color:var(--g);line-height:1.2;}
+.stat-l{font-size:6px;color:var(--mut);letter-spacing:.15em;margin-top:3px;text-transform:uppercase;}
+.stat-sub{font-size:8px;color:var(--mut);margin-top:2px;}
+
+/* ─── BUTTONS ─────────────────────────────── */
+.btn{
+  background:transparent;border:1px solid var(--g3);border-radius:3px;
+  color:var(--g);font-family:'Orbitron',monospace;font-size:8px;
+  font-weight:700;letter-spacing:.14em;cursor:pointer;
+  padding:8px 12px;text-transform:uppercase;
+  transition:all .15s;min-height:36px;
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;
+}
+.btn:active{transform:scale(.96);background:var(--dim);}
+.btn-full{width:100%;padding:13px;font-size:10px;margin-top:8px;min-height:44px;}
+.btn-r{border-color:#7a0010;color:var(--r);}
+.btn-r:active{background:rgba(255,0,64,.08);}
+.btn-c{border-color:#006060;color:var(--c);}
+.btn-c:active{background:rgba(0,255,234,.06);}
+.btn-v{border-color:#5500aa;color:var(--v);}
+.btn-sm{padding:5px 9px;font-size:7px;min-height:30px;}
+.btn-y{border-color:#7a5500;color:var(--y);}
+.btn-danger{border-color:var(--r);color:var(--r);background:rgba(255,0,64,.1);}
+
+/* ─── CHAT ─────────────────────────────────── */
+#chatBtn{
+  position:fixed;bottom:20px;right:14px;z-index:500;
+  width:52px;height:52px;border-radius:50%;
+  background:var(--sur);border:2px solid var(--g);
+  color:var(--g);font-size:22px;cursor:pointer;
+  box-shadow:var(--glsm);display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+#chatBtn:active{transform:scale(.92);}
+#chatBadge{
+  position:absolute;top:-4px;right:-4px;
+  background:var(--r);color:#fff;
+  font-size:8px;font-family:'Orbitron',monospace;
+  padding:2px 5px;border-radius:10px;min-width:16px;text-align:center;
+  display:none;
+}
+#adminChatBtn{
+  position:fixed;bottom:20px;left:14px;z-index:500;
+  width:52px;height:52px;border-radius:50%;
+  background:var(--sur);border:2px solid var(--c);
+  color:var(--c);font-size:22px;cursor:pointer;
+  box-shadow:var(--cglow);display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+#adminChatBtn:active{transform:scale(.92);}
+#adminNotifDot{
+  position:absolute;top:-3px;right:-3px;
+  width:10px;height:10px;border-radius:50%;
+  background:var(--r);display:none;animation:blink .8s infinite;
+}
+
+/* CHAT PANEL */
+.chat-panel{
+  position:fixed;inset:0;z-index:800;
+  background:rgba(0,0,0,.97);
+  display:flex;flex-direction:column;
+  transform:translateY(100%);transition:transform .3s ease;
+}
+.chat-panel.open{transform:translateY(0);}
+.chat-hdr{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 14px;border-bottom:1px solid var(--bdr);
+  flex-shrink:0;
+}
+.chat-title{font-family:'Orbitron',monospace;font-size:13px;font-weight:700;flex:1;}
+.chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;}
+.chat-msgs::-webkit-scrollbar{width:2px;}
+.chat-msgs::-webkit-scrollbar-thumb{background:var(--g3);}
+.chat-msg{max-width:85%;padding:9px 12px;border-radius:4px;font-size:10px;line-height:1.7;}
+.chat-msg.user{
+  align-self:flex-end;
+  background:var(--dim);border:1px solid var(--g3);color:var(--g);
+  border-radius:4px 4px 0 4px;
+}
+.chat-msg.ai{
+  align-self:flex-start;
+  background:var(--sur);border:1px solid var(--bdr);color:var(--txt);
+  border-radius:4px 4px 4px 0;
+}
+.chat-msg.admin-msg{
+  align-self:flex-start;
+  background:rgba(0,255,234,.06);border:1px solid #006060;color:var(--c);
+  border-radius:4px 4px 4px 0;
+}
+.chat-msg-time{font-size:6px;color:var(--mut);margin-top:3px;}
+.chat-typing{font-size:9px;color:var(--mut);padding:4px 12px;animation:blink 1.5s infinite;}
+.chat-quota-card{
+  background:var(--sur);border:1px solid var(--bdr);border-radius:6px;
+  padding:14px;text-align:center;margin:8px 0;
+}
+.chat-quota-qr{width:120px;height:120px;border:1px solid var(--g3);border-radius:4px;object-fit:contain;display:block;margin:10px auto;}
+.chat-input-row{
+  display:flex;gap:8px;padding:10px 12px;
+  border-top:1px solid var(--bdr);flex-shrink:0;
+}
+.chat-input{
+  flex:1;padding:10px 12px;background:#000;
+  border:1px solid var(--g3);border-radius:4px;
+  color:var(--g);font-family:'Share Tech Mono',monospace;font-size:13px;
+  outline:none;resize:none;max-height:100px;
+}
+.chat-input:focus{border-color:var(--g);box-shadow:var(--glsm);}
+
+/* TOAST */
+#toast{
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+  z-index:99999;display:flex;flex-direction:column;align-items:center;gap:5px;pointer-events:none;
+}
+.toast-item{
+  background:var(--sur);border:1px solid var(--g3);border-radius:4px;
+  padding:8px 14px;font-size:9px;color:var(--g);letter-spacing:.06em;
+  animation:tin .25s ease;box-shadow:var(--glsm);white-space:nowrap;
+}
+.toast-item.err{border-color:var(--r);color:var(--r);}
+.toast-item.warn{border-color:var(--y);color:var(--y);}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* MISC */
+.divider{height:1px;background:var(--bdr);margin:10px 0;}
+.empty{text-align:center;padding:20px;color:var(--mut);font-size:9px;}
+.loading-spin{display:inline-block;animation:spin 1s linear infinite;margin-right:4px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none!important;}
+</style>
+</head>
+<body>
+<canvas id="mc"></canvas>
+<div id="toast"></div>
+
+<!-- ═══ OVERLAYS ══════════════════════════════════════ -->
+
+<!-- MAINTENANCE (z:10003) -->
+<div class="overlay hidden" id="ovMaintenance">
+  <div class="maint-icon">🔧</div>
+  <div class="maint-title">MAINTENANCE MODE</div>
+  <div class="maint-msg" id="maintMsg">System is currently under maintenance. Please check back soon.</div>
+  <div class="maint-sub">ANASHRAW.AI // SYSTEM STATUS</div>
+</div>
+
+<!-- PREMIUM LOCK (z:10002) -->
+<div class="overlay hidden" id="ovPremium">
+  <div class="prem-box">
+    <div class="prem-title">🔒 PREMIUM ACCESS</div>
+    <div class="prem-sub">ANASHRAW.AI // SUBSCRIPTION REQUIRED</div>
+    <img class="prem-qr hidden" id="premQr" alt="Payment QR" src="">
+    <div class="prem-txt" id="premTxt">Contact admin to unlock premium access.</div>
+    <div class="prem-keyrow">
+      <input class="prem-key-input" id="premKeyInput" type="text" placeholder="ENTER KEY" maxlength="32"
+        oninput="this.value=this.value.toUpperCase()"
+        onkeydown="if(event.key==='Enter')verifyKey(document.getElementById('premKeyInput').value)">
+      <button class="btn btn-v" onclick="verifyKey(document.getElementById('premKeyInput').value)">VERIFY</button>
+    </div>
+    <div class="key-err" id="premErr"></div>
+  </div>
+</div>
+
+<!-- KEY OVERLAY (z:10001) — live feed visible behind -->
+<div class="overlay hidden" id="ovKey" style="background:rgba(0,0,0,.88);">
+  <div class="key-inner">
+    <div class="key-brand">
+      <div class="key-logo">ANASHRAW<span>.AI</span></div>
+      <div class="key-by">BY ANASHRAW DIXIT</div>
+    </div>
+    <!-- Live feed preview in key overlay -->
+    <div class="key-box" style="padding:10px;">
+      <div style="font-size:7px;color:var(--mut);letter-spacing:.18em;margin-bottom:6px;">// LIVE FEED PREVIEW</div>
+      <div id="keyFeedPreview" style="height:120px;overflow:hidden;opacity:.6;font-size:9px;">
+        <div class="empty">Loading feed...</div>
+      </div>
+    </div>
+    <div class="key-box">
+      <div class="key-title">🔑 ACCESS KEY REQUIRED</div>
+      <input class="key-input" id="keyInput" type="text" placeholder="ENTER YOUR KEY"
+        maxlength="32" oninput="this.value=this.value.toUpperCase()"
+        onkeydown="if(event.key==='Enter')verifyKey(keyInput.value)">
+      <div class="key-err" id="keyErr"></div>
+      <button class="btn btn-full" id="keyVerifyBtn" onclick="verifyKey(keyInput.value)">
+        🔓 VERIFY KEY
+      </button>
+    </div>
+    <div class="key-pay-box">
+      <div class="key-pay-title">// PURCHASE ACCESS</div>
+      <img class="key-qr hidden" id="keyQr" alt="Payment QR" src="">
+      <div class="key-pay-txt" id="keyPayTxt">Scan to purchase • Contact admin for key</div>
+    </div>
+
+    <!-- LOGIN PAGE ADMIN CHAT -->
+    <div class="key-box" style="padding:0;overflow:hidden;">
+      <div class="sec-hdr" style="border-radius:4px 4px 0 0;cursor:default;" onclick="toggleLoginChat()">
+        <div class="sec-dots">
+          <div class="sec-dot" style="background:var(--c)"></div>
+          <div class="sec-dot" style="background:var(--g)"></div>
+        </div>
+        <div class="sec-title" style="color:var(--c);">💬 CHAT WITH ADMIN</div>
+        <div id="loginChatNotifDot" style="display:none;width:8px;height:8px;border-radius:50%;background:var(--r);animation:blink .8s infinite;"></div>
+        <span id="loginChatToggleIcon" style="font-size:10px;color:var(--mut);">▼</span>
+      </div>
+      <div id="loginChatBody" style="display:none;background:var(--sur);">
+        <!-- Name input (shown first time) -->
+        <div id="loginChatNameRow" style="padding:10px 12px;border-bottom:1px solid var(--bdr);display:flex;gap:6px;">
+          <input id="loginChatName" class="key-input" style="margin:0;padding:8px 10px;font-size:11px;flex:1;"
+            placeholder="YOUR NAME / NICK" maxlength="20">
+          <button class="btn btn-c btn-sm" onclick="setLoginChatName()">SET</button>
+        </div>
+        <div id="loginChatMsgs" style="height:180px;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:5px;">
+          <div style="text-align:center;font-size:8px;color:var(--mut);padding:20px 0;">
+            💬 Ask admin about plans, keys, or support
+          </div>
+        </div>
+        <div id="loginAdminTyping" style="display:none;font-size:8px;color:var(--mut);padding:2px 10px;animation:blink 1.5s infinite;">Admin is typing...</div>
+        <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--bdr);">
+          <input id="loginChatInput" class="key-input"
+            style="margin:0;padding:8px 10px;font-size:12px;flex:1;"
+            placeholder="Type message..."
+            onkeydown="if(event.key==='Enter')sendLoginChatMsg()">
+          <button class="btn btn-c btn-sm" onclick="sendLoginChatMsg()">SEND</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:7px;color:var(--mut);padding-bottom:10px;">ANASHRAW.AI v2 // FIREBASE: SECURE SERVER</div>
+  </div>
+</div>
+
+<!-- KICKED (z:10004) -->
+<div class="overlay hidden" id="ovKicked">
+  <div class="kicked-icon">⛔</div>
+  <div class="kicked-title">ACCESS REVOKED</div>
+  <div class="kicked-sub" id="kickedMsg">Your access key has been revoked by the administrator.<br>Please contact support for assistance.</div>
+  <button class="btn btn-r" style="margin-top:12px;" onclick="location.reload()">🔄 RELOAD</button>
+</div>
+
+<!-- ═══ MAIN APP ══════════════════════════════════════ -->
+<div id="app" class="hidden">
+<header>
+  <div class="hdr-top">
+    <div class="brand-wrap">
+      <div class="brand">ANASHRAW<span class="ai">.AI</span></div>
+      <div class="brand-sub">BY ANASHRAW DIXIT // WINGO PREDICTOR</div>
+    </div>
+    <div class="hdr-right">
+      <div class="clk" id="clk">00:00:00</div>
+      <div class="clkd" id="clkd">---</div>
+    </div>
+  </div>
+  <!-- Status chips -->
+  <div class="chip-row" id="chipRow">
+    <div class="chip chip-ok" id="chipServer"><div class="chip-dot chip-dot-ok"></div>SERVER</div>
+    <div class="chip chip-warn" id="chipAI"><div class="chip-dot chip-dot-warn"></div>AI</div>
+    <div class="chip chip-off" id="chipBuf"><div class="chip-dot chip-dot-off"></div>BUF</div>
+    <div class="chip chip-ok" id="chipAuto"><div class="chip-dot chip-dot-ok"></div>AUTO</div>
+    <div class="chip chip-ok" id="chipPrd"><div class="chip-dot chip-dot-ok"></div>PRD</div>
+  </div>
+  <!-- Key bar -->
+  <div class="key-bar">
+    <div class="key-bar-info">
+      <div class="key-badge" id="keyLabel">KEY-????</div>
+      <div class="key-exp" id="keyExp">EXP: --</div>
+    </div>
+    <button class="btn btn-r btn-sm" onclick="logout()">LOGOUT</button>
+  </div>
+  <!-- Firebase bar -->
+  <div class="fb-bar">
+    <div>FIREBASE: SECURE SERVER // RECORDS: <span id="fbCount">0</span></div>
+    <div>SYNC: <span id="fbSync">--:--:--</span></div>
+  </div>
+  <!-- Countdown bar -->
+  <div class="cd-bar">
+    <div class="cd-top">
+      <div>
+        <div class="cd-label">NEXT PERIOD</div>
+        <div class="cd-period" id="cdPeriod">PRD: ---</div>
+      </div>
+      <div class="cd-time" id="cdTime">--s</div>
+    </div>
+    <div class="cd-track"><div class="cd-fill" id="cdFill" style="width:100%"></div></div>
+    <div class="poll-bar"><div class="poll-dot"></div><span>POLLING FIREBASE EVERY 2s</span></div>
+  </div>
+</header>
+
+<!-- LIVE FEED SECTION (no key required) -->
+<div class="section" id="secFeed">
+  <div class="sec-hdr" onclick="toggleSec('feedBody')">
+    <div class="sec-dots">
+      <div class="sec-dot" style="background:#f00"></div>
+      <div class="sec-dot" style="background:#ff0"></div>
+      <div class="sec-dot" style="background:#0f0"></div>
+    </div>
+    <div class="sec-title">📡 LIVE RESULTS FEED</div>
+    <span class="sec-badge" id="feedCount">0</span>
+  </div>
+  <div class="sec-body" id="feedBody">
+    <div class="feed-controls">
+      <button class="btn btn-sm" onclick="reloadFeed()">🔄 RELOAD</button>
+      <button class="btn btn-sm btn-r" id="pauseBtn" onclick="togglePause()">⏸ PAUSE</button>
+      <span style="font-size:7px;color:var(--mut);margin-left:auto;">MAX 100 ENTRIES</span>
+    </div>
+    <div class="feed-box" id="feedBox">
+      <div class="empty">Loading live feed...</div>
+    </div>
+  </div>
+</div>
+
+<!-- PREDICTION SECTION (key required) -->
+<div class="section" id="secPred">
+  <div class="sec-hdr" onclick="toggleSec('predBody')">
+    <div class="sec-dots">
+      <div class="sec-dot" style="background:#0ff"></div>
+      <div class="sec-dot" style="background:#0f0"></div>
+      <div class="sec-dot" style="background:#f0f"></div>
+    </div>
+    <div class="sec-title">🤖 AI PREDICTION</div>
+    <span class="sec-badge" id="predPeriodBadge">---</span>
+  </div>
+  <div class="sec-body" id="predBody">
+    <div id="predLock" class="pred-lock">🔒 Verify key to view predictions</div>
+    <div id="predContent" class="hidden">
+      <!-- Number display -->
+      <div class="pred-num-wrap" id="predNumWrap">
+        <div class="pred-analyzing hidden" id="predAnalyzing">⏳ ANALYZING...</div>
+        <div id="predNumDisplay">
+          <span class="pred-big-num" id="predBigNum" style="color:var(--g)">?</span>
+          <div class="badges-row">
+            <span class="pred-badge" id="predColBadge" style="border-color:var(--g3);color:var(--g)">GREEN</span>
+            <span class="pred-badge" id="predBsBadge" style="border-color:#006060;color:var(--c)">BIG</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Confidence bars -->
+      <div class="conf-bars">
+        <div class="conf-row">
+          <div class="conf-label"><span>NUMBER ACCURACY</span><span id="confNumPct">0%</span></div>
+          <div class="conf-track"><div class="conf-fill cf-num" id="confNumBar" style="width:0%"></div></div>
+          <div style="font-size:7px;color:var(--mut);margin-top:2px;" id="confNumDetail">0/0 correct</div>
+        </div>
+        <div class="conf-row">
+          <div class="conf-label"><span>COLOR ACCURACY</span><span id="confColPct">0%</span></div>
+          <div class="conf-track"><div class="conf-fill cf-col" id="confColBar" style="width:0%"></div></div>
+          <div style="font-size:7px;color:var(--mut);margin-top:2px;" id="confColDetail">0/0 correct</div>
+        </div>
+        <div class="conf-row">
+          <div class="conf-label"><span>BIG/SMALL ACCURACY</span><span id="confBsPct">0%</span></div>
+          <div class="conf-track"><div class="conf-fill cf-bs" id="confBsBar" style="width:0%"></div></div>
+          <div style="font-size:7px;color:var(--mut);margin-top:2px;" id="confBsDetail">0/0 correct</div>
+        </div>
+      </div>
+
+      <!-- Alternatives -->
+      <div style="font-size:7px;color:var(--mut);letter-spacing:.15em;margin-bottom:5px;">// TOP ALTERNATIVES</div>
+      <div class="alts-row" id="altsRow">
+        <div class="alt-item"><div class="alt-num" style="color:var(--mut)">?</div><div class="alt-prob">--</div></div>
+        <div class="alt-item"><div class="alt-num" style="color:var(--mut)">?</div><div class="alt-prob">--</div></div>
+        <div class="alt-item"><div class="alt-num" style="color:var(--mut)">?</div><div class="alt-prob">--</div></div>
+      </div>
+
+      <!-- Reasoning (VIP) -->
+      <div class="reasoning-box hidden" id="reasoningBox">
+        <div class="reasoning-title">// AI REASONING</div>
+        <div id="reasoningText">--</div>
+      </div>
+
+      <!-- Analysis chips -->
+      <div style="font-size:7px;color:var(--mut);letter-spacing:.15em;margin-bottom:5px;margin-top:8px;">// PATTERN ANALYSIS</div>
+      <div class="analysis-chips" id="analysisChips">
+        <span class="ana-chip neutral">HOT: --</span>
+        <span class="ana-chip neutral">COLD: --</span>
+        <span class="ana-chip neutral">STREAK: --</span>
+        <span class="ana-chip neutral">COLOR RUN: --</span>
+        <span class="ana-chip neutral">B/S RATIO: --</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PREDICTION HISTORY -->
+<div class="section" id="secHistory">
+  <div class="sec-hdr" onclick="toggleSec('histBody')">
+    <div class="sec-dots">
+      <div class="sec-dot" style="background:#0f0"></div>
+      <div class="sec-dot" style="background:#f00"></div>
+      <div class="sec-dot" style="background:#00f"></div>
+    </div>
+    <div class="sec-title">📋 PREDICTION HISTORY</div>
+    <span class="sec-badge" id="histCount">0</span>
+  </div>
+  <div class="sec-body" id="histBody">
+    <div id="histLock" class="pred-lock">🔒 Verify key to view history</div>
+    <div id="histContent" class="hidden">
+      <div class="htbl-wrap">
+        <table class="htbl">
+          <thead>
+            <tr>
+              <th>PERIOD</th><th>PRD#</th><th>COL</th><th>B/S</th>
+              <th>ACT#</th><th>ACT COL</th><th>NUM</th><th>COL</th><th>B/S</th>
+            </tr>
+          </thead>
+          <tbody id="histBody2"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="section" id="secStats">
+  <div class="sec-hdr" onclick="toggleSec('statsBody')">
+    <div class="sec-dots">
+      <div class="sec-dot" style="background:#ff0"></div>
+      <div class="sec-dot" style="background:#0ff"></div>
+      <div class="sec-dot" style="background:#f0f"></div>
+    </div>
+    <div class="sec-title">📊 STATISTICS</div>
+  </div>
+  <div class="sec-body" id="statsBody">
+    <div id="statsLock" class="pred-lock">🔒 Verify key to view stats</div>
+    <div id="statsContent" class="hidden">
+      <div class="stats-grid">
+        <div class="stat-c"><div class="stat-v" id="stTotal">0</div><div class="stat-l">TOTAL</div></div>
+        <div class="stat-c"><div class="stat-v" style="color:var(--g)" id="stWins">0</div><div class="stat-l">WINS</div></div>
+        <div class="stat-c"><div class="stat-v" style="color:var(--r)" id="stLoss">0</div><div class="stat-l">LOSS</div></div>
+      </div>
+      <div class="stats-grid" style="margin-top:6px;">
+        <div class="stat-c">
+          <div class="stat-v" style="color:var(--c)" id="stPct">0%</div>
+          <div class="stat-l">OVERALL</div>
+        </div>
+        <div class="stat-c">
+          <div class="stat-v" style="color:var(--y)" id="stPend">0</div>
+          <div class="stat-l">PENDING</div>
+        </div>
+        <div class="stat-c">
+          <div class="stat-v" style="color:var(--v)" id="stColAcc">0%</div>
+          <div class="stat-l">COLOR ACC</div>
+        </div>
+      </div>
+      <div class="stats-grid" style="margin-top:6px;">
+        <div class="stat-c">
+          <div class="stat-v" id="stNumAcc">0%</div>
+          <div class="stat-l">NUM ACC</div>
+        </div>
+        <div class="stat-c">
+          <div class="stat-v" style="color:var(--c)" id="stBsAcc">0%</div>
+          <div class="stat-l">B/S ACC</div>
+        </div>
+        <div class="stat-c">
+          <div class="stat-v" style="color:var(--g)" id="stStreak">0</div>
+          <div class="stat-l">STREAK</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div><!-- /app -->
+
+<!-- ═══ CHAT PANELS ═══════════════════════════════════ -->
+
+<!-- AI Chat button -->
+<div id="chatBtn" class="hidden" onclick="toggleChat('ai')">
+  🤖
+  <div id="chatBadge">5</div>
+</div>
+
+<!-- Admin Chat button -->
+<div id="adminChatBtn" class="hidden" onclick="toggleChat('admin')">
+  💬
+  <div id="adminNotifDot"></div>
+</div>
+
+<!-- AI Chat Panel -->
+<div class="chat-panel" id="aiChatPanel">
+  <div class="chat-hdr">
+    <div class="chat-title" style="color:var(--g)">🤖 ANASHRAW AI ASSISTANT</div>
+    <span style="font-size:8px;color:var(--mut)">REMAINING: <span id="aiRemaining">--</span></span>
+    <button class="btn btn-sm btn-r" onclick="toggleChat('ai')">✕ CLOSE</button>
+  </div>
+  <div class="chat-msgs" id="aiMsgs">
+    <div class="chat-msg ai">
+      <div>Welcome to ANASHRAW.AI Assistant! Ask me about WinGo strategies, predictions, or patterns.</div>
+      <div class="chat-msg-time">ANASHRAW AI</div>
+    </div>
+  </div>
+  <div id="aiTyping" class="chat-typing hidden">⏳ AI is thinking...</div>
+  <div class="chat-input-row">
+    <textarea class="chat-input" id="aiInput" placeholder="Ask AI..." rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMsg();}"></textarea>
+    <button class="btn" onclick="sendAIMsg()">SEND</button>
+  </div>
+</div>
+
+<!-- Admin Chat Panel -->
+<div class="chat-panel" id="adminChatPanel">
+  <div class="chat-hdr">
+    <div class="chat-title" style="color:var(--c)">💬 SUPPORT CHAT</div>
+    <div id="adminTypingIndicator" class="hidden" style="font-size:8px;color:var(--mut);">Admin is typing...</div>
+    <button class="btn btn-sm btn-c" onclick="toggleChat('admin')">✕ CLOSE</button>
+  </div>
+  <div class="chat-msgs" id="adminMsgs">
+    <div class="chat-msg ai" style="border-color:#006060;">
+      <div>Support chat connected. Send a message to the admin.</div>
+      <div class="chat-msg-time">SYSTEM</div>
+    </div>
+  </div>
+  <div class="chat-input-row">
+    <textarea class="chat-input" id="adminInput" placeholder="Message admin..." rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdminMsg();}"></textarea>
+    <button class="btn btn-c" onclick="sendAdminMsg()">SEND</button>
+  </div>
+</div>
+
+<!-- ═══ SCRIPTS ═══════════════════════════════════════ -->
+<script>
+// ── CONFIG ──────────────────────────────────────────────
+const FB_CONFIG = {
+  apiKey: "AIzaSyCrhsY2aLZaos19ULooCbQJZh4AxMZV9wQ",
+  authDomain: "anashrawwingokey.firebaseapp.com",
+  projectId: "anashrawwingokey",
+  storageBucket: "anashrawwingokey.firebasestorage.app",
+  messagingSenderId: "515715007863",
+  appId: "1:515715007863:web:bdebab42892be2d1bc0d72"
+};
+const WORKER = 'https://anashraw-predictor.anashrawdixit191.workers.dev';
+const WINGO_PERIOD_SEC = 60;
+
+// ── STATE ────────────────────────────────────────────────
+let db, userKey = null, keyData = null;
+let feedItems = [], feedPaused = false;
+let lastPeriod = null, lastUpdatedAt = null;
+let countdownInterval = null, clockInterval = null, pollInterval = null;
+let heartbeatInterval = null;
+let predHistory = [], confStats = { num: {c:0,t:0}, col: {c:0,t:0}, bs: {c:0,t:0} };
+let aiChatHistory = [], aiRemaining = 0;
+let adminChatUnsub = null, adminChatId = null;
+let keyUnsub = null;
+let settingsCache = {};
+
+// ── MATRIX RAIN ──────────────────────────────────────────
+(function(){
+  const cv = document.getElementById('mc');
+  const ctx = cv.getContext('2d');
+  let cols, drops = [];
+  const chars = 'アイウエオカキクケコ0123456789ABCDEF!@#$%^&*ANASHRAW';
+  function resize(){
+    cv.width = window.innerWidth; cv.height = window.innerHeight;
+    cols = Math.floor(cv.width / 14);
+    drops = Array(cols).fill(1);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+  setInterval(()=>{
+    ctx.fillStyle = 'rgba(0,0,0,.05)';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = '#00ff41';
+    ctx.font = '12px Share Tech Mono';
+    drops.forEach((y, i) => {
+      const ch = chars[Math.floor(Math.random() * chars.length)];
+      ctx.fillText(ch, i * 14, y * 14);
+      if(y * 14 > cv.height && Math.random() > .975) drops[i] = 0;
+      drops[i]++;
+    });
+  }, 50);
+})();
+
+// ── FIREBASE INIT ────────────────────────────────────────
+firebase.initializeApp(FB_CONFIG);
+db = firebase.firestore();
+
+// ── UTILS ────────────────────────────────────────────────
+function ts() {
+  const now = new Date();
+  return now.toTimeString().split(' ')[0];
+}
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = 'toast-item' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  document.getElementById('toast').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+function toggleSec(id) {
+  const el = document.getElementById(id);
+  if(el) el.style.display = el.style.display === 'none' ? '' : '';
+}
+function colorOf(n) {
+  if(n === 0 || n === 5) return 'violet';
+  if([1,3,7,9].includes(n)) return 'green';
+  return 'red';
+}
+function colorCss(c) {
+  if(c === 'green') return '#00ff41';
+  if(c === 'violet') return '#bf7fff';
+  return '#ff0040';
+}
+function colorEmoji(c) {
+  if(c === 'green') return '🟢';
+  if(c === 'violet') return '🟣';
+  return '🔴';
+}
+function fmtPeriod(p) {
+  return 'P' + String(p || '').slice(-6);
+}
+
+// ── CLOCK ────────────────────────────────────────────────
+function startClock() {
+  function tick() {
+    const now = new Date();
+    document.getElementById('clk').textContent = now.toTimeString().split(' ')[0];
+    const opts = {weekday:'short',month:'short',day:'numeric'};
+    document.getElementById('clkd').textContent = now.toLocaleDateString('en-US', opts).toUpperCase();
+  }
+  tick();
+  clockInterval = setInterval(tick, 1000);
+}
+
+// ── SETTINGS LOAD ────────────────────────────────────────
+async function loadSettings() {
+  try {
+    const [globalDoc, payDoc] = await Promise.all([
+      db.collection('settings').doc('global').get(),
+      db.collection('settings').doc('payment').get()
+    ]);
+    const g = globalDoc.exists ? globalDoc.data() : {};
+    const p = payDoc.exists ? payDoc.data() : {};
+    settingsCache = { ...g, payment: p };
+
+    // Maintenance
+    if(g.maintenanceMode) {
+      document.getElementById('maintMsg').textContent = g.maintenanceMessage || 'System under maintenance.';
+      show('ovMaintenance');
+      return false;
+    }
+
+    // Payment UI
+    if(p.qrImageUrl) {
+      ['premQr','keyQr'].forEach(id => {
+        const el = document.getElementById(id);
+        el.src = p.qrImageUrl; el.classList.remove('hidden');
+      });
+    }
+    if(p.paymentText) {
+      document.getElementById('premTxt').textContent = p.paymentText;
+      document.getElementById('keyPayTxt').textContent = p.paymentText;
+    }
+
+    // Premium lock
+    if(g.premiumLockMode) {
+      show('ovPremium');
+    } else {
+      show('ovKey');
+    }
+    return true;
+  } catch(e) {
+    console.error(e);
+    show('ovKey');
+    return true;
+  }
+}
+
+function show(ovId) {
+  ['ovMaintenance','ovPremium','ovKey','ovKicked'].forEach(id => {
+    document.getElementById(id).classList.toggle('hidden', id !== ovId);
+  });
+}
+
+// ── KEY VERIFICATION ─────────────────────────────────────
+async function verifyKey(k) {
+  k = (k || '').trim().toUpperCase();
+  if(!k) { setKeyErr('Enter your access key'); return; }
+  setKeyErr('');
+  setBtnLoading(true);
+
+  try {
+    const resp = await fetch(`${WORKER}/validate-key`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ key: k })
+    });
+    const data = await resp.json();
+    if(data.ok) {
+      userKey = k;
+      keyData = data.data || {};
+      localStorage.setItem('anashraw_key', k);
+      onKeyVerified(data);
+    } else {
+      setKeyErr(data.error || 'Invalid key');
+    }
+  } catch(e) {
+    setKeyErr('Connection error — try again');
+  }
+  setBtnLoading(false);
+}
+
+function setKeyErr(msg) {
+  ['keyErr','premErr'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.textContent = msg;
+  });
+}
+function setBtnLoading(v) {
+  const btn = document.getElementById('keyVerifyBtn');
+  if(btn) btn.textContent = v ? '⏳ VERIFYING...' : '🔓 VERIFY KEY';
+}
+
+function onKeyVerified(resp) {
+  // Hide overlays, show app
+  ['ovMaintenance','ovPremium','ovKey','ovKicked'].forEach(id =>
+    document.getElementById(id).classList.add('hidden')
+  );
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('chatBtn').classList.remove('hidden');
+  document.getElementById('adminChatBtn').classList.remove('hidden');
+
+  // Update key bar
+  document.getElementById('keyLabel').textContent = keyData.label || userKey.slice(0,8);
+  updateAIRemaining(resp.remaining, resp.max);
+
+  // Expiry
+  if(keyData.expiresAt) {
+    const exp = keyData.expiresAt.toDate ? keyData.expiresAt.toDate() : new Date(keyData.expiresAt);
+    document.getElementById('keyExp').textContent = 'EXP: ' + exp.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  } else if(keyData.lifetime) {
+    document.getElementById('keyExp').textContent = 'EXP: LIFETIME ♾';
+  }
+
+  // Unlock sections
+  ['predLock','histLock','statsLock'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  ['predContent','histContent','statsContent'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+
+  // Start everything
+  startKickWatcher();
+  startHeartbeat();
+  startPolling();
+  loadPredictions();
+  loadAdminChat();
+  toast('✅ Welcome back, ' + (keyData.label || userKey.slice(0,8)));
+}
+
+// ── AUTO-RESTORE KEY ─────────────────────────────────────
+async function tryRestoreKey() {
+  const k = localStorage.getItem('anashraw_key');
+  if(!k) return;
+  document.getElementById('keyInput').value = k;
+  try {
+    const resp = await fetch(`${WORKER}/validate-key`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({key: k})
+    });
+    const data = await resp.json();
+    if(data.ok) {
+      userKey = k;
+      keyData = data.data || {};
+      onKeyVerified(data);
+    } else {
+      localStorage.removeItem('anashraw_key');
+    }
+  } catch(e) { /* network err, just show key screen */ }
+}
+
+// ── LOGOUT ───────────────────────────────────────────────
+function logout() {
+  localStorage.removeItem('anashraw_key');
+  userKey = null; keyData = null;
+  clearInterval(heartbeatInterval);
+  if(keyUnsub) keyUnsub();
+  if(adminChatUnsub) adminChatUnsub();
+  location.reload();
+}
+
+// ── KICK WATCHER ─────────────────────────────────────────
+function startKickWatcher() {
+  if(!userKey) return;
+  keyUnsub = db.collection('keys').where('key', '==', userKey)
+    .onSnapshot(snap => {
+      snap.docs.forEach(d => {
+        if(d.data().kicked) {
+          localStorage.removeItem('anashraw_key');
+          document.getElementById('ovKicked').classList.remove('hidden');
+          document.getElementById('app').classList.add('hidden');
+        }
+      });
+    });
+}
+
+// ── HEARTBEAT ────────────────────────────────────────────
+async function sendHeartbeat() {
+  if(!userKey) return;
+  try {
+    await fetch(`${WORKER}/heartbeat`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({key: userKey})
+    });
+  } catch(e) {}
+}
+function startHeartbeat() {
+  sendHeartbeat();
+  heartbeatInterval = setInterval(sendHeartbeat, 15000);
+}
+
+// ── LIVE FEED ────────────────────────────────────────────
+async function loadFeedInitial() {
+  try {
+    const snap = await db.collection('results')
+      .orderBy('period', 'desc')
+      .limit(100)
+      .get();
+    feedItems = [];
+    snap.docs.forEach(d => feedItems.push(d.data()));
+    renderFeed();
+    updateFbBar(snap.size);
+    if(feedItems.length) {
+      lastPeriod = feedItems[0].period;
+      lastUpdatedAt = feedItems[0].savedAt || null;
+    }
+  } catch(e) {
+    document.getElementById('feedBox').innerHTML = '<div class="empty">// Error loading feed</div>';
+  }
+}
+
+function renderFeed(newRow = null) {
+  const box = document.getElementById('feedBox');
+  const keyPrev = document.getElementById('keyFeedPreview');
+  if(!feedItems.length) {
+    box.innerHTML = '<div class="empty">// No results yet</div>';
+    return;
+  }
+  let html = '';
+  feedItems.slice(0, 100).forEach((r, i) => {
+    const col = colorOf(r.number);
+    const css = colorCss(col);
+    const colBadge = `<span class="feed-badge badge-${col}">${col.toUpperCase()}</span>`;
+    const bsBadge = r.bigSmall === 'BIG'
+      ? '<span class="feed-badge badge-big">BIG</span>'
+      : '<span class="feed-badge badge-small">SML</span>';
+    const newCls = (newRow && i === 0) ? ' feed-new' : '';
+    html += `<div class="feed-row${newCls}">
+      <span class="feed-idx">[${String(i).padStart(2,'0')}]</span>
+      <span class="feed-prd">${fmtPeriod(r.period)}</span>
+      <span class="feed-num ${col}" style="color:${css}">${r.number}</span>
+      ${colBadge} ${bsBadge}
+    </div>`;
+  });
+  box.innerHTML = html;
+  document.getElementById('feedCount').textContent = feedItems.length;
+  // Key overlay preview (first 8 rows, simplified)
+  if(keyPrev) {
+    let prevHtml = '';
+    feedItems.slice(0,8).forEach((r,i) => {
+      const col = colorOf(r.number);
+      const css = colorCss(col);
+      prevHtml += `<div style="display:flex;gap:6px;font-size:8px;padding:1px 0;border-bottom:1px solid #050f05;">
+        <span style="color:#3a6b3a">[${String(i).padStart(2,'0')}]</span>
+        <span style="color:#3a6b3a">${fmtPeriod(r.period)}</span>
+        <span style="font-family:Orbitron,monospace;font-weight:700;color:${css}">${r.number}</span>
+        <span style="color:${css}">${col.toUpperCase()}</span>
+        <span style="color:${r.bigSmall==='BIG'?'#00ffea':'#ffe000'}">${r.bigSmall}</span>
+      </div>`;
+    });
+    keyPrev.innerHTML = prevHtml;
+  }
+}
+
+function reloadFeed() { loadFeedInitial(); }
+function togglePause() {
+  feedPaused = !feedPaused;
+  document.getElementById('pauseBtn').textContent = feedPaused ? '▶ RESUME' : '⏸ PAUSE';
+  toast(feedPaused ? '⏸ Feed paused' : '▶ Feed resumed');
+}
+
+function updateFbBar(count) {
+  document.getElementById('fbCount').textContent = count;
+  document.getElementById('fbSync').textContent = ts();
+}
+
+// ── POLLING (every 2s) ───────────────────────────────────
+function startPolling() {
+  pollInterval = setInterval(pollLatest, 2000);
+  pollLatest();
+}
+
+async function pollLatest() {
+  try {
+    const doc = await db.collection('meta').doc('latest').get();
+    if(!doc.exists) return;
+    const d = doc.data();
+    const period = d.period;
+    const updatedAt = d.updatedAt;
+
+    // Update countdown from Firebase (period-based, NOT page-load-based)
+    updateCountdown(updatedAt, period);
+
+    if(period && period !== lastPeriod) {
+      // New period detected
+      lastPeriod = period;
+      lastUpdatedAt = updatedAt;
+      if(!feedPaused) {
+        const newResult = {
+          period: d.period,
+          number: d.number,
+          colour: d.colour,
+          bigSmall: d.bigSmall,
+          savedAt: updatedAt
+        };
+        feedItems.unshift(newResult);
+        if(feedItems.length > 100) feedItems.pop();
+        renderFeed(true);
+        updateFbBar(feedItems.length);
+        toast(`📡 New: PRD ${fmtPeriod(period)} → ${d.number} ${colorOf(d.number).toUpperCase()}`);
+      }
+      // Also reload predictions
+      if(userKey) loadPredictions();
+    }
+
+    // Update period display
+    document.getElementById('cdPeriod').textContent = 'PRD: ' + fmtPeriod(period);
+  } catch(e) {}
+}
+
+function updateCountdown(updatedAt, period) {
+  if(!updatedAt) return;
+  const lastTime = updatedAt instanceof Date ? updatedAt : new Date(updatedAt);
+  const now = new Date();
+  const elapsed = Math.floor((now - lastTime) / 1000);
+  const remaining = Math.max(0, WINGO_PERIOD_SEC - elapsed);
+  const pct = (remaining / WINGO_PERIOD_SEC) * 100;
+
+  document.getElementById('cdTime').textContent = remaining + 's';
+  document.getElementById('cdFill').style.width = pct + '%';
+
+  // Color indicator
+  const cdTime = document.getElementById('cdTime');
+  if(remaining <= 10) {
+    cdTime.style.color = 'var(--r)';
+    cdTime.style.textShadow = 'var(--rglow)';
+  } else if(remaining <= 20) {
+    cdTime.style.color = 'var(--y)';
+    cdTime.style.textShadow = '0 0 8px var(--y)';
+  } else {
+    cdTime.style.color = 'var(--y)';
+    cdTime.style.textShadow = '0 0 8px var(--y)';
+  }
+}
+
+// ── PREDICTIONS ──────────────────────────────────────────
+async function loadPredictions() {
+  if(!userKey) return;
+  try {
+    // Listen to predictions collection
+    db.collection('predictions')
+      .orderBy('period', 'desc')
+      .limit(20)
+      .onSnapshot(snap => {
+        predHistory = snap.docs.map(d => d.data());
+        renderPredHistory();
+        calcStats();
+        calcConfBars();
+      });
+
+    // Latest prediction from meta
+    db.collection('meta').doc('latestPrediction')
+      .onSnapshot(doc => {
+        if(doc.exists) renderPrediction(doc.data());
+      });
+  } catch(e) {}
+}
+
+function renderPrediction(pred) {
+  if(!pred || !userKey) return;
+  const mode = keyData.confidenceMode || 'normal';
+  const numConf = pred.numberConfidence || pred.numConf || 0;
+
+  // High confidence mode — hide if too low
+  if(mode === 'high' && numConf < 60) {
+    document.getElementById('predAnalyzing').classList.remove('hidden');
+    document.getElementById('predNumDisplay').classList.add('hidden');
+    return;
+  }
+  document.getElementById('predAnalyzing').classList.add('hidden');
+  document.getElementById('predNumDisplay').classList.remove('hidden');
+
+  const num = pred.number ?? pred.predictedNumber ?? '?';
+  const col = pred.colour || pred.color || colorOf(num);
+  const bs = pred.bigSmall || 'BIG';
+  const css = colorCss(col);
+
+  // Big number
+  const bigNum = document.getElementById('predBigNum');
+  bigNum.textContent = num;
+  bigNum.style.color = css;
+  bigNum.style.textShadow = `0 0 30px ${css}, 0 0 60px ${css}55`;
+
+  // Badges
+  const cb = document.getElementById('predColBadge');
+  cb.textContent = col.toUpperCase();
+  cb.style.borderColor = css; cb.style.color = css;
+
+  const bsb = document.getElementById('predBsBadge');
+  bsb.textContent = bs;
+  bsb.style.borderColor = bs === 'BIG' ? '#00ffea' : '#ffe000';
+  bsb.style.color = bs === 'BIG' ? '#00ffea' : '#ffe000';
+
+  // Period
+  document.getElementById('predPeriodBadge').textContent = fmtPeriod(pred.period);
+
+  // Alternatives (VIP or normal)
+  const alts = pred.alternatives || [];
+  const altRow = document.getElementById('altsRow');
+  if(alts.length) {
+    altRow.innerHTML = '';
+    alts.slice(0,3).forEach(a => {
+      const ac = colorOf(a.number || a.num || 0);
+      const acss = colorCss(ac);
+      altRow.innerHTML += `<div class="alt-item">
+        <div class="alt-num" style="color:${acss}">${a.number ?? a.num ?? '?'}</div>
+        <div class="alt-prob">${a.probability ? Math.round(a.probability) + '%' : '--'}</div>
+      </div>`;
+    });
+  }
+
+  // Reasoning (VIP only)
+  if(mode === 'vip' && pred.reasoning) {
+    document.getElementById('reasoningBox').classList.remove('hidden');
+    document.getElementById('reasoningText').textContent = pred.reasoning;
+  }
+
+  // Analysis chips
+  renderAnalysis(pred);
+}
+
+function renderAnalysis(pred) {
+  const chips = document.getElementById('analysisChips');
+  const hot = pred.hotNumbers || [];
+  const cold = pred.coldNumbers || [];
+  const streak = pred.streak || null;
+  const colRun = pred.colorRun || null;
+  const bsRatio = pred.bsRatio || null;
+
+  chips.innerHTML = `
+    <span class="ana-chip ${hot.length?'hot':'neutral'}">HOT: ${hot.length ? hot.join(',') : '--'}</span>
+    <span class="ana-chip ${cold.length?'cold':'neutral'}">COLD: ${cold.length ? cold.join(',') : '--'}</span>
+    <span class="ana-chip ${streak?'streak':'neutral'}">STREAK: ${streak || '--'}</span>
+    <span class="ana-chip ${colRun?'colrun':'neutral'}">COLOR RUN: ${colRun || '--'}</span>
+    <span class="ana-chip neutral">B/S RATIO: ${bsRatio || '--'}</span>
+  `;
+}
+
+// ── PREDICTION HISTORY ───────────────────────────────────
+function renderPredHistory() {
+  const tbody = document.getElementById('histBody2');
+  document.getElementById('histCount').textContent = predHistory.length;
+  if(!predHistory.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">// No prediction history</td></tr>';
+    return;
+  }
+  tbody.innerHTML = '';
+  predHistory.forEach(p => {
+    const predNum = p.number ?? p.predictedNumber ?? '?';
+    const predCol = p.colour || p.color || colorOf(predNum);
+    const predBs = p.bigSmall || '--';
+    const actNum = p.actualNumber ?? p.actual?.number ?? '--';
+    const actCol = p.actualColour || p.actual?.colour || (actNum !== '--' ? colorOf(actNum) : '--');
+    const actBs = p.actualBigSmall || p.actual?.bigSmall || '--';
+
+    const numWin = actNum !== '--' && String(actNum) === String(predNum);
+    const colWin = actCol !== '--' && actCol === predCol;
+    const bsWin = actBs !== '--' && actBs === predBs;
+    const anyWin = numWin || colWin || bsWin;
+    const pending = actNum === '--';
+
+    const rowCls = pending ? '' : anyWin ? 'win-row' : 'loss-row';
+    const numCss = colorCss(colorOf(predNum));
+    const actCss = actNum !== '--' ? colorCss(colorOf(actNum)) : '#3a6b3a';
+
+    const winBadge = (win, pend) => pend
+      ? '<span class="pend-badge">?</span>'
+      : win ? '<span class="win-badge">✓</span>' : '<span class="loss-badge">✗</span>';
+
+    const tr = document.createElement('tr');
+    tr.className = rowCls;
+    tr.innerHTML = `
+      <td style="color:var(--mut)">${fmtPeriod(p.period)}</td>
+      <td style="font-family:Orbitron,monospace;color:${numCss};font-weight:700">${predNum}</td>
+      <td style="color:${colorCss(predCol)}">${(predCol||'').toUpperCase().slice(0,3)}</td>
+      <td style="color:var(--txt)">${predBs.slice(0,3)}</td>
+      <td style="font-family:Orbitron,monospace;color:${actCss}">${actNum}</td>
+      <td style="color:${actCol!=='--'?colorCss(actCol):'#3a6b3a'}">${actCol!=='--'?(actCol||'').toUpperCase().slice(0,3):'--'}</td>
+      <td>${winBadge(numWin, pending)}</td>
+      <td>${winBadge(colWin, pending)}</td>
+      <td>${winBadge(bsWin, pending)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── STATS ────────────────────────────────────────────────
+function calcStats() {
+  let total = 0, wins = 0, losses = 0, pend = 0;
+  let numCorr = 0, numTot = 0, colCorr = 0, colTot = 0, bsCorr = 0, bsTot = 0;
+  let streak = 0, curStreak = 0;
+
+  predHistory.forEach(p => {
+    const predNum = p.number ?? p.predictedNumber;
+    const predCol = p.colour || p.color || colorOf(predNum);
+    const predBs = p.bigSmall;
+    const actNum = p.actualNumber ?? p.actual?.number;
+    const actCol = p.actualColour || p.actual?.colour;
+    const actBs = p.actualBigSmall || p.actual?.bigSmall;
+
+    if(actNum === undefined || actNum === null) { pend++; return; }
+    total++;
+
+    const numW = String(actNum) === String(predNum);
+    const colW = actCol === predCol;
+    const bsW = actBs === predBs;
+    const any = numW || colW || bsW;
+
+    if(any) { wins++; curStreak++; streak = Math.max(streak, curStreak); }
+    else { losses++; curStreak = 0; }
+
+    numTot++; if(numW) numCorr++;
+    colTot++; if(colW) colCorr++;
+    bsTot++; if(bsW) bsCorr++;
+  });
+
+  const pct = total ? Math.round((wins/total)*100) : 0;
+  const numAcc = numTot ? Math.round((numCorr/numTot)*100) : 0;
+  const colAcc = colTot ? Math.round((colCorr/colTot)*100) : 0;
+  const bsAcc = bsTot ? Math.round((bsCorr/bsTot)*100) : 0;
+
+  document.getElementById('stTotal').textContent = total;
+  document.getElementById('stWins').textContent = wins;
+  document.getElementById('stLoss').textContent = losses;
+  document.getElementById('stPct').textContent = pct + '%';
+  document.getElementById('stPend').textContent = pend;
+  document.getElementById('stNumAcc').textContent = numAcc + '%';
+  document.getElementById('stColAcc').textContent = colAcc + '%';
+  document.getElementById('stBsAcc').textContent = bsAcc + '%';
+  document.getElementById('stStreak').textContent = streak;
+
+  confStats = {
+    num: {c: numCorr, t: numTot},
+    col: {c: colCorr, t: colTot},
+    bs: {c: bsCorr, t: bsTot}
+  };
+}
+
+function calcConfBars() {
+  const {num, col, bs} = confStats;
+  const np = num.t ? Math.round((num.c/num.t)*100) : 0;
+  const cp = col.t ? Math.round((col.c/col.t)*100) : 0;
+  const bp = bs.t ? Math.round((bs.c/bs.t)*100) : 0;
+
+  document.getElementById('confNumBar').style.width = np + '%';
+  document.getElementById('confColBar').style.width = cp + '%';
+  document.getElementById('confBsBar').style.width = bp + '%';
+  document.getElementById('confNumPct').textContent = np + '%';
+  document.getElementById('confColPct').textContent = cp + '%';
+  document.getElementById('confBsPct').textContent = bp + '%';
+  document.getElementById('confNumDetail').textContent = `${num.c}/${num.t} correct`;
+  document.getElementById('confColDetail').textContent = `${col.c}/${col.t} correct`;
+  document.getElementById('confBsDetail').textContent = `${bs.c}/${bs.t} correct`;
+}
+
+// ── AI CHAT ──────────────────────────────────────────────
+let aiPanelOpen = false, adminPanelOpen = false;
+
+function toggleChat(type) {
+  if(type === 'ai') {
+    aiPanelOpen = !aiPanelOpen;
+    document.getElementById('aiChatPanel').classList.toggle('open', aiPanelOpen);
+    if(aiPanelOpen) scrollChat('aiMsgs');
+  } else {
+    adminPanelOpen = !adminPanelOpen;
+    document.getElementById('adminChatPanel').classList.toggle('open', adminPanelOpen);
+    if(adminPanelOpen) {
+      document.getElementById('adminNotifDot').style.display = 'none';
+      scrollChat('adminMsgs');
+    }
+  }
+}
+
+function scrollChat(id) {
+  const el = document.getElementById(id);
+  if(el) setTimeout(() => el.scrollTop = el.scrollHeight, 100);
+}
+
+function updateAIRemaining(rem, max) {
+  aiRemaining = rem ?? aiRemaining;
+  document.getElementById('aiRemaining').textContent =
+    (aiRemaining !== null && aiRemaining !== undefined) ? `${aiRemaining}/${max||'∞'}` : '--';
+  const badge = document.getElementById('chatBadge');
+  if(aiRemaining !== null) {
+    badge.textContent = aiRemaining;
+    badge.style.display = aiRemaining <= 3 ? 'block' : 'none';
+  }
+}
+
+async function sendAIMsg() {
+  if(!userKey) return;
+  const inp = document.getElementById('aiInput');
+  const msg = inp.value.trim();
+  if(!msg) return;
+  inp.value = '';
+
+  appendChatMsg('aiMsgs', 'user', msg);
+  aiChatHistory.push({role:'user', content: msg});
+
+  // Save to Firebase adminChat
+  saveChatToFirebase('user', msg);
+
+  if(aiRemaining !== null && aiRemaining <= 0) {
+    showQuotaCard();
+    return;
+  }
+
+  document.getElementById('aiTyping').classList.remove('hidden');
+  try {
+    const resp = await fetch(`${WORKER}/ai-chat`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        key: userKey,
+        message: msg,
+        history: aiChatHistory.slice(-10)
+      })
+    });
+    const data = await resp.json();
+    document.getElementById('aiTyping').classList.add('hidden');
+    if(data.ok || data.reply) {
+      const reply = data.reply || data.message || '';
+      appendChatMsg('aiMsgs', 'ai', reply);
+      aiChatHistory.push({role:'assistant', content: reply});
+      saveChatToFirebase('assistant', reply);
+      if(data.remaining !== undefined) updateAIRemaining(data.remaining, data.max);
+    } else if(data.quotaExceeded || data.error?.includes('quota')) {
+      showQuotaCard();
+    } else {
+      appendChatMsg('aiMsgs', 'ai', 'Error: ' + (data.error || 'Unknown error'));
+    }
+  } catch(e) {
+    document.getElementById('aiTyping').classList.add('hidden');
+    appendChatMsg('aiMsgs', 'ai', '❌ Connection error. Please try again.');
+  }
+}
+
+function appendChatMsg(containerId, role, text) {
+  const container = document.getElementById(containerId);
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + (role === 'user' ? 'user' : role === 'admin' ? 'admin-msg' : 'ai');
+  div.innerHTML = `<div>${escapeHtml(text)}</div><div class="chat-msg-time">${ts()}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function showQuotaCard() {
+  const pay = settingsCache.payment || {};
+  const container = document.getElementById('aiMsgs');
+  const div = document.createElement('div');
+  div.className = 'chat-quota-card';
+  div.innerHTML = `
+    <div style="font-family:Orbitron,monospace;font-size:11px;color:var(--r);margin-bottom:8px;">⛔ DAILY QUOTA REACHED</div>
+    ${pay.qrImageUrl ? `<img class="chat-quota-qr" src="${pay.qrImageUrl}" alt="QR">` : ''}
+    <div style="font-size:9px;color:var(--txt);line-height:1.7;margin-bottom:8px;">${pay.paymentText || 'Contact admin to purchase more questions.'}</div>
+    <div style="font-size:8px;color:var(--mut);">⏰ Resets at midnight</div>
+  `;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+// ── ADMIN CHAT (FIREBASE) ────────────────────────────────
+function getAdminChatId() {
+  if(!userKey) return null;
+  const d = new Date();
+  const dateStr = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  return userKey + '_' + dateStr;
+}
+
+function saveChatToFirebase(role, content) {
+  // NO Firebase writes from predictor.html
+  // All writes go via worker — but admin chat is saved via worker
+  saveAdminChatViaWorker(role, content);
+}
+
+async function saveAdminChatViaWorker(role, content) {
+  if(!userKey) return;
+  try {
+    await fetch(`${WORKER}/save-chat`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        key: userKey,
+        role,
+        content,
+        chatId: getAdminChatId()
+      })
+    });
+  } catch(e) {}
+}
+
+async function sendAdminMsg() {
+  if(!userKey) return;
+  const inp = document.getElementById('adminInput');
+  const msg = inp.value.trim();
+  if(!msg) return;
+  inp.value = '';
+  appendChatMsg('adminMsgs', 'user', msg);
+  await saveAdminChatViaWorker('user', msg);
+}
+
+function loadAdminChat() {
+  if(!userKey) return;
+  adminChatId = getAdminChatId();
+  adminChatUnsub = db.collection('adminChat').doc(adminChatId)
+    .onSnapshot(doc => {
+      if(!doc.exists) return;
+      const data = doc.data();
+      const msgs = data.messages || [];
+      const container = document.getElementById('adminMsgs');
+
+      // Render only new admin messages (not user's own)
+      const existingCount = container.querySelectorAll('.admin-msg').length;
+      const adminMsgs = msgs.filter(m => m.role === 'admin');
+
+      if(adminMsgs.length > existingCount) {
+        // New admin message
+        const newMsgs = adminMsgs.slice(existingCount);
+        newMsgs.forEach(m => {
+          appendChatMsg('adminMsgs', 'admin', m.content);
+        });
+        if(!adminPanelOpen) {
+          document.getElementById('adminNotifDot').style.display = 'block';
+          toast('💬 New message from admin!', 'warn');
+        }
+      }
+    });
+}
+
+// ── STATUS CHIPS UPDATER ─────────────────────────────────
+function updateChips() {
+  // SERVER chip — always OK if we're running
+  // AI chip — depends on last successful AI call
+  // BUF chip — feed buffer
+  // AUTO chip — auto polling
+  // PRD chip — prediction available
+  const hasPred = document.getElementById('predBigNum').textContent !== '?';
+  setChip('chipPrd', hasPred ? 'ok' : 'warn');
+  setChip('chipBuf', feedItems.length > 0 ? 'ok' : 'warn');
+}
+function setChip(id, state) {
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.className = `chip chip-${state}`;
+  const dot = el.querySelector('.chip-dot');
+  if(dot) dot.className = `chip-dot chip-dot-${state}`;
+}
+
+// ── INIT ─────────────────────────────────────────────────
+async function init() {
+  startClock();
+  // Start live feed (no key needed)
+  loadFeedInitial();
+
+  // Load settings & show appropriate overlay
+  const ok = await loadSettings();
+  if(!ok) return; // Maintenance mode
+
+  // Try restore key
+  await tryRestoreKey();
+
+  // Status chips updater
+  setInterval(updateChips, 3000);
+}
+
+// Start
+init();
+
+// ── LOGIN PAGE ADMIN CHAT ────────────────────────────────
+let loginChatId = null, loginChatUnsub = null;
+let loginChatName = localStorage.getItem('anashraw_guest_name') || '';
+let loginChatOpen = false;
+let loginChatRenderedCount = 0;
+
+function toggleLoginChat() {
+  loginChatOpen = !loginChatOpen;
+  document.getElementById('loginChatBody').style.display = loginChatOpen ? '' : 'none';
+  document.getElementById('loginChatToggleIcon').textContent = loginChatOpen ? '▲' : '▼';
+  if(loginChatOpen) {
+    if(loginChatName) document.getElementById('loginChatNameRow').style.display = 'none';
+    initLoginChat();
+    scrollLoginChat();
+    document.getElementById('loginChatNotifDot').style.display = 'none';
+  }
+}
+
+function setLoginChatName() {
+  const v = document.getElementById('loginChatName').value.trim();
+  if(!v) return;
+  loginChatName = v;
+  localStorage.setItem('anashraw_guest_name', v);
+  document.getElementById('loginChatNameRow').style.display = 'none';
+  toast('Name set: ' + v);
+}
+
+function getLoginChatId() {
+  if(!loginChatId) {
+    let gid = localStorage.getItem('anashraw_guest_id');
+    if(!gid) {
+      gid = 'GUEST_' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,5).toUpperCase();
+      localStorage.setItem('anashraw_guest_id', gid);
+    }
+    const d = new Date();
+    const dateStr = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+    loginChatId = gid + '_' + dateStr;
+  }
+  return loginChatId;
+}
+
+function initLoginChat() {
+  if(loginChatUnsub) return;
+  const chatId = getLoginChatId();
+  loginChatUnsub = db.collection('adminChat').doc(chatId).onSnapshot(doc => {
+    if(!doc.exists) return;
+    const msgs = doc.data().messages || [];
+    renderLoginChatMsgs(msgs);
+  });
+}
+
+function renderLoginChatMsgs(msgs) {
+  const container = document.getElementById('loginChatMsgs');
+  if(!msgs.length) return;
+  if(msgs.length <= loginChatRenderedCount) return;
+  if(loginChatRenderedCount === 0) container.innerHTML = '';
+  const newMsgs = msgs.slice(loginChatRenderedCount);
+  newMsgs.forEach(m => {
+    const isUser = m.role === 'user';
+    const isAdmin = m.role === 'admin';
+    const div = document.createElement('div');
+    div.style.cssText = 'max-width:85%;align-self:' + (isUser?'flex-end':'flex-start') + ';background:' + (isUser?'var(--dim)':isAdmin?'rgba(0,255,234,.06)':'var(--sur)') + ';border:1px solid ' + (isUser?'var(--g3)':isAdmin?'#006060':'var(--bdr)') + ';color:' + (isUser?'var(--g)':isAdmin?'var(--c)':'var(--txt)') + ';padding:7px 10px;border-radius:' + (isUser?'4px 4px 0 4px':'4px 4px 4px 0') + ';font-size:9px;line-height:1.6;margin-bottom:2px;';
+    const name = isAdmin ? 'Admin' : (loginChatName || 'You');
+    const timeStr = m.timestamp ? new Date(m.timestamp).toTimeString().slice(0,5) : ts();
+    div.innerHTML = '<div>' + (m.content||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') + '</div><div style="font-size:6px;color:var(--mut);margin-top:2px;">' + name + ' · ' + timeStr + '</div>';
+    container.appendChild(div);
+    if(isAdmin && !loginChatOpen) {
+      document.getElementById('loginChatNotifDot').style.display = 'block';
+      toast('Admin replied!', 'warn');
+    }
+  });
+  loginChatRenderedCount = msgs.length;
+  document.getElementById('loginAdminTyping').style.display = 'none';
+  scrollLoginChat();
+}
+
+function scrollLoginChat() {
+  const el = document.getElementById('loginChatMsgs');
+  if(el) setTimeout(() => { el.scrollTop = el.scrollHeight; }, 80);
+}
+
+async function sendLoginChatMsg() {
+  const inp = document.getElementById('loginChatInput');
+  const msg = inp.value.trim();
+  if(!msg) return;
+  if(!loginChatName) {
+    document.getElementById('loginChatNameRow').style.display = 'flex';
+    document.getElementById('loginChatName').focus();
+    toast('Set your name first', 'warn');
+    return;
+  }
+  inp.value = '';
+  initLoginChat();
+  const container = document.getElementById('loginChatMsgs');
+  const div = document.createElement('div');
+  div.style.cssText = 'max-width:85%;align-self:flex-end;background:var(--dim);border:1px solid var(--g3);color:var(--g);padding:7px 10px;border-radius:4px 4px 0 4px;font-size:9px;line-height:1.6;margin-bottom:2px;opacity:.7;';
+  div.innerHTML = '<div>' + msg.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div><div style="font-size:6px;color:var(--mut);margin-top:2px;">' + loginChatName + ' · ' + ts() + ' · sending...</div>';
+  container.appendChild(div);
+  scrollLoginChat();
+  try {
+    const chatId = getLoginChatId();
+    await fetch(WORKER + '/save-chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ key: chatId, role: 'user', content: '[' + loginChatName + '] ' + msg, chatId: chatId, senderName: loginChatName, isGuest: true })
+    });
+  } catch(e) { toast('Send failed', 'err'); }
+}
+</script>
+</body>
+</html>
