@@ -446,6 +446,48 @@ header{padding:12px 0 0;border-bottom:1px solid var(--bdr);}
       <div class="tbd">
         <div id="predLock" class="pred-lock">🔒 Key verified — loading predictions...</div>
         <div id="predContent" class="hidden">
+          <!-- PREDICTION MODE TOGGLES -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">
+            <div id="btn50Eng" onclick="setPredMode('engine')"
+              style="flex:1;padding:6px 8px;border-radius:3px;font-family:'Orbitron',monospace;font-size:7px;font-weight:700;letter-spacing:.1em;cursor:pointer;text-align:center;border:1px solid var(--g);color:var(--g);background:rgba(0,255,65,.12);">
+              🤖 50-ENGINE
+            </div>
+            <div id="btnDBPred" onclick="setPredMode('db')"
+              style="flex:1;padding:6px 8px;border-radius:3px;font-family:'Orbitron',monospace;font-size:7px;font-weight:700;letter-spacing:.1em;cursor:pointer;text-align:center;border:1px solid var(--bdr);color:var(--mut);background:transparent;">
+              🗄️ DB PREDICT
+            </div>
+            <div id="btnBoth" onclick="setPredMode('both')"
+              style="flex:1;padding:6px 8px;border-radius:3px;font-family:'Orbitron',monospace;font-size:7px;font-weight:700;letter-spacing:.1em;cursor:pointer;text-align:center;border:1px solid var(--bdr);color:var(--mut);background:transparent;">
+              ⚡ COMPARE
+            </div>
+          </div>
+          <div id="modeLabel" style="font-size:7px;color:var(--mut);text-align:center;margin-bottom:6px;letter-spacing:.12em;">MODE: 50-ENGINE ACTIVE</div>
+
+          <!-- COMPARE VIEW (hidden by default) -->
+          <div id="compareBox" style="display:none;margin-bottom:8px;background:#000;border:1px solid var(--bdr);border-radius:4px;padding:10px;">
+            <div style="font-size:7px;color:var(--mut);letter-spacing:.18em;margin-bottom:8px;">// PREDICTION COMPARISON</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div style="text-align:center;padding:8px;border:1px solid var(--g3);border-radius:3px;">
+                <div style="font-size:7px;color:var(--mut);margin-bottom:4px;letter-spacing:.1em;">50-ENGINE</div>
+                <div id="cmpEngNum" style="font-family:'Orbitron',monospace;font-size:28px;font-weight:900;color:var(--g)">--</div>
+                <div id="cmpEngBadges" style="margin-top:4px;font-size:8px;"></div>
+                <div id="cmpEngConf" style="font-size:7px;color:var(--mut);margin-top:3px;">--</div>
+              </div>
+              <div style="text-align:center;padding:8px;border:1px solid var(--c);border-radius:3px;">
+                <div style="font-size:7px;color:var(--mut);margin-bottom:4px;letter-spacing:.1em;">DB PREDICT</div>
+                <div id="cmpDbNum" style="font-family:'Orbitron',monospace;font-size:28px;font-weight:900;color:var(--c)">--</div>
+                <div id="cmpDbBadges" style="margin-top:4px;font-size:8px;"></div>
+                <div id="cmpDbConf" style="font-size:7px;color:var(--mut);margin-top:3px;">--</div>
+              </div>
+            </div>
+            <div id="cmpOverall" style="margin-top:8px;padding:8px;background:rgba(0,255,65,.05);border:1px solid var(--g3);border-radius:3px;text-align:center;">
+              <div style="font-size:7px;color:var(--mut);letter-spacing:.15em;margin-bottom:4px;">// OVERALL CONSENSUS</div>
+              <div id="cmpConsensusNum" style="font-family:'Orbitron',monospace;font-size:32px;font-weight:900;color:var(--y)">--</div>
+              <div id="cmpConsensusBadges" style="margin-top:4px;"></div>
+              <div id="cmpAgreement" style="font-size:8px;color:var(--mut);margin-top:4px;">--</div>
+            </div>
+          </div>
+
           <div class="pc">
             <div class="plbl" id="plbl">AWAITING DATA...</div>
             <div id="predAnalyzing" class="pred-analyzing hidden">⏳ ANALYZING...</div>
@@ -752,15 +794,20 @@ async function fetchWinGoAPI(){
 }
 
 // ══════════════════════════════════════════════════════
-// FETCH FIREBASE RESULTS (via Worker)
+// FETCH FIREBASE RESULTS — Direct Firebase SDK (no worker needed)
 // ══════════════════════════════════════════════════════
 async function fetchFirebaseResults(){
   try{
-    const resp=await fetch(WORKER+'/results?limit=100');
-    if(!resp.ok)return[];
-    const data=await resp.json();
-    return(data.results||[]).map(normalizeResult).filter(x=>x.period>0);
-  }catch(e){return[];}
+    const snap = await db.collection('results')
+      .orderBy('period','desc')
+      .limit(100)
+      .get();
+    if(snap.empty) return [];
+    return snap.docs.map(d => normalizeResult(d.data())).filter(x=>x.period>0);
+  }catch(e){
+    console.log('Firebase results error:', e.message);
+    return [];
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1052,8 +1099,153 @@ function frontendPredict(data, tier){
 }
 
 // ══════════════════════════════════════════════════════
-// DO PREDICT (called on new period)
+// PREDICTION MODE STATE
 // ══════════════════════════════════════════════════════
+let predMode = 'engine'; // 'engine' | 'db' | 'both'
+let lastEnginePred = null;
+let lastDbPred = null;
+let dbPredUnsub = null;
+
+function setPredMode(mode){
+  predMode = mode;
+  // Update button styles
+  const modes = ['engine','db','both'];
+  const ids = ['btn50Eng','btnDBPred','btnBoth'];
+  const activeColors = ['var(--g)','var(--c)','var(--y)'];
+  const activeBg = ['rgba(0,255,65,.12)','rgba(0,255,234,.1)','rgba(255,224,0,.08)'];
+  ids.forEach((id,i)=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    if(modes[i]===mode){
+      el.style.border=`1px solid ${activeColors[i]}`;
+      el.style.color=activeColors[i];
+      el.style.background=activeBg[i];
+    }else{
+      el.style.border='1px solid var(--bdr)';
+      el.style.color='var(--mut)';
+      el.style.background='transparent';
+    }
+  });
+  const labels = {'engine':'MODE: 50-ENGINE ACTIVE','db':'MODE: DB PREDICTION ACTIVE','both':'MODE: COMPARE (BOTH)'};
+  document.getElementById('modeLabel').textContent = labels[mode]||'';
+
+  // Show/hide compare box
+  document.getElementById('compareBox').style.display = mode==='both'?'block':'none';
+
+  // If DB mode or both, start listening
+  if((mode==='db'||mode==='both')&&userKey){
+    startDbPredListener();
+  }
+
+  // Re-render based on mode
+  if(mode==='engine'&&lastEnginePred){
+    renderPrediction(lastEnginePred, lastEnginePred._periodStr);
+  } else if(mode==='db'&&lastDbPred){
+    renderPrediction(lastDbPred, lastDbPred._periodStr);
+  } else if(mode==='both'){
+    renderComparePreds();
+  }
+
+  toast(labels[mode]||'Mode changed');
+}
+
+// ── DB PREDICTION LISTENER ──────────────────────────
+function startDbPredListener(){
+  if(dbPredUnsub)return; // Already listening
+  dbPredUnsub = db.collection('predictions')
+    .orderBy('createdAt','desc')
+    .limit(1)
+    .onSnapshot(snap=>{
+      if(snap.empty)return;
+      const data = snap.docs[0].data();
+      // Normalize DB prediction to same format as engine
+      const dbPred = {
+        predictedNum: data.predictedNum ?? data.number ?? data.predictedNumber ?? '?',
+        predictedColor: data.predictedColor ?? data.colour ?? data.color ?? 'green',
+        predictedBS: data.predictedBS ?? data.bigSmall ?? 'BIG',
+        numConf: data.numConf ?? data.numberConfidence ?? 50,
+        colorConf: data.colorConf ?? data.colorConfidence ?? 50,
+        bsConf: data.bsConf ?? data.bsConfidence ?? 50,
+        alternatives: data.alternatives || [],
+        reasoning: data.reasoning || 'From Firebase DB',
+        hot: data.hot || [],
+        cold: data.cold || [],
+        bsRatio: data.bsRatio || '--',
+        colorRun: data.colorRun || null,
+        streakInfo: data.streakInfo || null,
+        dataPoints: data.dataPoints || data.basedOn || '--',
+        mode: 'db',
+        modelsUsed: data.modelsUsed || 'DB',
+        _periodStr: data.period || '--',
+        _source: 'db'
+      };
+      lastDbPred = dbPred;
+      if(predMode==='db'){
+        renderPrediction(dbPred, dbPred._periodStr);
+      } else if(predMode==='both'){
+        renderComparePreds();
+      }
+    }, e=>{ console.log('DB pred listener error:', e.message); });
+}
+
+// ── COMPARE RENDER ──────────────────────────────────
+function renderComparePreds(){
+  const eng = lastEnginePred;
+  const db2 = lastDbPred;
+
+  // Engine side
+  if(eng){
+    document.getElementById('cmpEngNum').textContent = String(eng.predictedNum);
+    document.getElementById('cmpEngNum').style.color = numCss(eng.predictedNum);
+    document.getElementById('cmpEngBadges').innerHTML = colorBadge(eng.predictedColor)+' '+sizeBadge(eng.predictedBS);
+    document.getElementById('cmpEngConf').textContent = `NUM:${eng.numConf}% COL:${eng.colorConf}% BS:${eng.bsConf}%`;
+  }
+
+  // DB side
+  if(db2){
+    document.getElementById('cmpDbNum').textContent = String(db2.predictedNum);
+    document.getElementById('cmpDbNum').style.color = numCss(db2.predictedNum);
+    document.getElementById('cmpDbBadges').innerHTML = colorBadge(db2.predictedColor)+' '+sizeBadge(db2.predictedBS);
+    document.getElementById('cmpDbConf').textContent = `NUM:${db2.numConf}% COL:${db2.colorConf}% BS:${db2.bsConf}%`;
+  }
+
+  // Consensus / Overall
+  if(eng && db2){
+    const agree = eng.predictedNum === db2.predictedNum;
+    const colorAgree = colorMatch(eng.predictedColor, db2.predictedColor);
+    const bsAgree = String(eng.predictedBS).toUpperCase() === String(db2.predictedBS).toUpperCase();
+
+    let consensusNum, consensusColor, consensusBS;
+    if(agree){
+      consensusNum = eng.predictedNum;
+    } else {
+      // Pick higher confidence
+      consensusNum = eng.numConf >= db2.numConf ? eng.predictedNum : db2.predictedNum;
+    }
+    consensusColor = colorAgree ? eng.predictedColor : (eng.colorConf >= db2.colorConf ? eng.predictedColor : db2.predictedColor);
+    consensusBS = bsAgree ? eng.predictedBS : (eng.bsConf >= db2.bsConf ? eng.predictedBS : db2.predictedBS);
+
+    document.getElementById('cmpConsensusNum').textContent = String(consensusNum);
+    document.getElementById('cmpConsensusNum').style.color = numCss(consensusNum);
+    document.getElementById('cmpConsensusBadges').innerHTML = colorBadge(consensusColor)+' '+sizeBadge(consensusBS);
+
+    const agreements = [agree, colorAgree, bsAgree].filter(Boolean).length;
+    const agreeText = agreements === 3 ? '✅ FULL AGREEMENT — HIGH CONFIDENCE' :
+                      agreements === 2 ? '⚡ PARTIAL AGREE — MEDIUM CONFIDENCE' :
+                      '⚠ BOTH DISAGREE — LOW CONFIDENCE';
+    const agreeColor = agreements === 3 ? 'var(--g)' : agreements === 2 ? 'var(--y)' : 'var(--r)';
+    document.getElementById('cmpAgreement').textContent = agreeText;
+    document.getElementById('cmpAgreement').style.color = agreeColor;
+  } else if(eng || db2){
+    const p = eng || db2;
+    document.getElementById('cmpConsensusNum').textContent = String(p.predictedNum);
+    document.getElementById('cmpConsensusNum').style.color = numCss(p.predictedNum);
+    document.getElementById('cmpConsensusBadges').innerHTML = colorBadge(p.predictedColor)+' '+sizeBadge(p.predictedBS);
+    document.getElementById('cmpAgreement').textContent = eng ? '⏳ Waiting for DB...' : '⏳ Waiting for Engine...';
+  }
+}
+
+
 function doPredict(){
   if(!userKey)return;
   const allResults=buildMergedFeed();
@@ -1065,13 +1257,29 @@ function doPredict(){
   if(!pred){document.getElementById('aiStat').textContent=' READY';return;}
   const latestResult=allResults[0];
   const nextPeriod=parseInt(latestResult.period)+1;
+
+  // Save engine prediction
+  pred._periodStr = String(nextPeriod);
+  pred._source = 'engine';
+  lastEnginePred = pred;
+
   // Resolve previous if new period
   if(lastResolvedPeriod!==latestResult.period){
     lastResolvedPeriod=latestResult.period;
     resolvePredFirebase(latestResult);
     savePredFirebase(pred,nextPeriod,latestResult.period);
   }
-  renderPrediction(pred,String(nextPeriod));
+
+  // Render based on mode
+  if(predMode==='engine'||predMode===undefined){
+    renderPrediction(pred,String(nextPeriod));
+  } else if(predMode==='both'){
+    renderComparePreds();
+    // Also update main display with consensus
+    renderPrediction(pred,String(nextPeriod));
+  }
+  // db mode: don't override — let DB listener handle
+
   // Update history entry
   const entry={
     id:Date.now(),time:ts(),afterPeriod:latestResult.period||'--',
@@ -1296,7 +1504,16 @@ function getAdminChatId(){
 async function sendAdminMsg(){
   if(!userKey)return;const inp=document.getElementById('adminInput');const msg=inp.value.trim();if(!msg)return;inp.value='';
   appendMsg('adminMsgs','user',msg);
-  try{await fetch(`${WORKER}/save-chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:userKey,role:'user',content:msg,chatId:getAdminChatId()})});}catch(e){}
+  // Save directly to Firebase
+  try{
+    const chatId = getAdminChatId();
+    const newMsg = {role:'user', content:msg, timestamp:new Date().toISOString()};
+    await db.collection('adminChat').doc(chatId).set({
+      chatId, key:userKey,
+      messages: firebase.firestore.FieldValue.arrayUnion(newMsg),
+      lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+    },{merge:true});
+  }catch(e){}
 }
 function loadAdminChat(){
   if(!userKey)return;
@@ -1304,11 +1521,16 @@ function loadAdminChat(){
   adminChatUnsub=db.collection('adminChat').doc(adminChatId).onSnapshot(doc=>{
     if(!doc.exists)return;
     const data=doc.data();
+    // Support both array format and JSON string format
     let msgs=[];
-    try{msgs=JSON.parse(data.messagesJson||'[]');}catch(e){msgs=data.messages||[];}
+    if(Array.isArray(data.messages)) msgs=data.messages;
+    else try{msgs=JSON.parse(data.messagesJson||'[]');}catch(e){msgs=[];}
     const existing=document.getElementById('adminMsgs').querySelectorAll('.admin-msg').length;
     const adminMsgs=msgs.filter(m=>m.role==='admin');
-    if(adminMsgs.length>existing){adminMsgs.slice(existing).forEach(m=>appendMsg('adminMsgs','admin',m.content));if(!adminPanelOpen){document.getElementById('adminNotifDot').style.display='block';toast('💬 Admin replied!','warn');}}
+    if(adminMsgs.length>existing){
+      adminMsgs.slice(existing).forEach(m=>appendMsg('adminMsgs','admin',m.content));
+      if(!adminPanelOpen){document.getElementById('adminNotifDot').style.display='block';toast('💬 Admin replied!','warn');}
+    }
   });
 }
 
@@ -1328,7 +1550,9 @@ function initLchat(){
   if(lchatUnsub)return;const cid=getLchatId();
   lchatUnsub=db.collection('adminChat').doc(cid).onSnapshot(doc=>{
     if(!doc.exists)return;const data=doc.data();
-    let msgs=[];try{msgs=JSON.parse(data.messagesJson||'[]');}catch(e){msgs=data.messages||[];}
+    let msgs=[];
+    if(Array.isArray(data.messages)) msgs=data.messages;
+    else try{msgs=JSON.parse(data.messagesJson||'[]');}catch(e){msgs=[];}
     renderLchatMsgs(msgs);
   });
 }
@@ -1355,34 +1579,107 @@ async function sendLchatMsg(){
   const d=document.createElement('div');d.className='lchat-msg user';d.style.opacity='.6';
   d.innerHTML=`<div>${escHtml(msg)}</div><div class="lchat-msg-time">${lchatName} · ${ts()} · sending...</div>`;
   document.getElementById('lchatMsgs').appendChild(d);scrollLchat();
-  try{await fetch(`${WORKER}/save-chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:getLchatId(),role:'user',content:`[${lchatName}] ${msg}`,chatId:getLchatId(),senderName:lchatName,isGuest:true})});}catch(e){toast('Send failed','err');}
+  try{
+    const chatId = getLchatId();
+    const newMsg = {role:'user', content:`[${lchatName}] ${msg}`, timestamp:new Date().toISOString(), senderName:lchatName, isGuest:true};
+    await db.collection('adminChat').doc(chatId).set({
+      chatId, key:chatId, senderName:lchatName, isGuest:true,
+      messages: firebase.firestore.FieldValue.arrayUnion(newMsg),
+      lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+    },{merge:true});
+  }catch(e){toast('Send failed','err');}
 }
 
 // ══════════════════════════════════════════════════════
-// KEY VERIFICATION
+// KEY VERIFICATION — Firebase Direct
 // ══════════════════════════════════════════════════════
 async function verifyKey(k){
   k=(k||'').trim().toUpperCase();if(!k){setKeyErr('Enter your access key');return;}
   setKeyErr('');const btn=document.getElementById('keyVerifyBtn');if(btn)btn.textContent='⏳ VERIFYING...';
   try{
-    const resp=await fetch(`${WORKER}/validate-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
-    const data=await resp.json();
-    if(data.ok){userKey=k;keyData=data.data||{};sessionStorage.setItem('aw_key',k);onKeyVerified(data);}
-    else setKeyErr(data.error||'Invalid key');
-  }catch(e){setKeyErr('Connection error — check internet');}
+    // Direct Firebase check
+    const doc = await db.collection('keys').doc(k).get();
+    let keyDoc = null;
+    if(doc.exists){
+      keyDoc = doc.data();
+    } else {
+      // Fallback: search by key field
+      const snap = await db.collection('keys').where('key','==',k).limit(1).get();
+      if(!snap.empty) keyDoc = snap.docs[0].data();
+    }
+
+    if(!keyDoc){ setKeyErr('Invalid key — not found'); if(btn)btn.textContent='🔓 VERIFY KEY'; return; }
+    if(keyDoc.blocked||keyDoc.status==='blocked'){ setKeyErr('Key is blocked'); if(btn)btn.textContent='🔓 VERIFY KEY'; return; }
+    if(!keyDoc.lifetime && keyDoc.expiresAt){
+      const exp = keyDoc.expiresAt.toDate ? keyDoc.expiresAt.toDate() : new Date(keyDoc.expiresAt);
+      if(exp < new Date()){ setKeyErr('Key expired on '+exp.toLocaleDateString()); if(btn)btn.textContent='🔓 VERIFY KEY'; return; }
+    }
+
+    // Get global settings for Q/day
+    const settDoc = await db.collection('settings').doc('global').get();
+    const settData = settDoc.exists ? settDoc.data() : {};
+    const maxQ = keyDoc.questionsOverride || settData.questionsPerDay || 5;
+
+    // Get quota
+    const today = new Date().toISOString().split('T')[0];
+    let used = 0;
+    try{
+      const qDoc = await db.collection('quotas').doc(`${k}_${today}`).get();
+      if(qDoc.exists) used = qDoc.data().used || 0;
+    }catch(e){}
+    const remaining = Math.max(0, maxQ - used);
+
+    userKey = k;
+    keyData = {
+      label: keyDoc.label || k.slice(0,8),
+      tier: keyDoc.tier || 'basic',
+      confidenceMode: keyDoc.confidenceMode || 'normal',
+      questionsOverride: keyDoc.questionsOverride || null,
+      expiresAt: keyDoc.expiresAt || null,
+      lifetime: keyDoc.lifetime || false,
+    };
+    sessionStorage.setItem('aw_key', k);
+    onKeyVerified({ ok:true, data: keyData, remaining, max: maxQ });
+  }catch(e){
+    setKeyErr('Connection error — check internet');
+    console.error('verifyKey error:', e);
+  }
   if(btn)btn.textContent='🔓 VERIFY KEY';
 }
 function setKeyErr(msg){['keyErr','premErr'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=msg;});}
 
 async function tryRestoreKey(){
   const k=sessionStorage.getItem('aw_key')||localStorage.getItem('anashraw_key');
-  if(!k)return;const inp=document.getElementById('keyInput');if(inp)inp.value=k;
+  if(!k)return false;
+  const inp=document.getElementById('keyInput');if(inp)inp.value=k;
   try{
-    const resp=await fetch(`${WORKER}/validate-key`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
-    const data=await resp.json();
-    if(data.ok){userKey=k;keyData=data.data||{};onKeyVerified(data);}
-    else{sessionStorage.removeItem('aw_key');localStorage.removeItem('anashraw_key');}
-  }catch(e){}
+    const doc = await db.collection('keys').doc(k).get();
+    let keyDoc = null;
+    if(doc.exists) keyDoc = doc.data();
+    else {
+      const snap = await db.collection('keys').where('key','==',k).limit(1).get();
+      if(!snap.empty) keyDoc = snap.docs[0].data();
+    }
+    if(!keyDoc||keyDoc.blocked||keyDoc.status==='blocked'||keyDoc.kicked){
+      sessionStorage.removeItem('aw_key');localStorage.removeItem('anashraw_key');
+      return false;
+    }
+    if(!keyDoc.lifetime && keyDoc.expiresAt){
+      const exp = keyDoc.expiresAt.toDate ? keyDoc.expiresAt.toDate() : new Date(keyDoc.expiresAt);
+      if(exp < new Date()){ sessionStorage.removeItem('aw_key'); return false; }
+    }
+    const settDoc = await db.collection('settings').doc('global').get();
+    const settData = settDoc.exists ? settDoc.data() : {};
+    const maxQ = keyDoc.questionsOverride || settData.questionsPerDay || 5;
+    const today = new Date().toISOString().split('T')[0];
+    let used = 0;
+    try{ const qDoc = await db.collection('quotas').doc(`${k}_${today}`).get(); if(qDoc.exists) used = qDoc.data().used||0; }catch(e){}
+    const remaining = Math.max(0, maxQ - used);
+    userKey = k;
+    keyData = { label:keyDoc.label||k.slice(0,8), tier:keyDoc.tier||'basic', confidenceMode:keyDoc.confidenceMode||'normal', questionsOverride:keyDoc.questionsOverride||null, expiresAt:keyDoc.expiresAt||null, lifetime:keyDoc.lifetime||false };
+    onKeyVerified({ ok:true, data:keyData, remaining, max:maxQ });
+    return true;
+  }catch(e){ return false; }
 }
 
 function onKeyVerified(resp){
@@ -1401,14 +1698,25 @@ function onKeyVerified(resp){
   document.getElementById('histLock').classList.add('hidden');document.getElementById('histWrap').classList.remove('hidden');
   startHeartbeat();watchSession();startCountdown();
   initFeed();loadAdminChat();
+  // Start DB prediction listener for 'both'/'db' mode
+  if(predMode==='db'||predMode==='both') startDbPredListener();
   toast('✅ Welcome, '+(keyData.label||userKey.slice(0,8)));
 }
 
 // ══════════════════════════════════════════════════════
-// HEARTBEAT
+// HEARTBEAT — Firebase Direct
 // ══════════════════════════════════════════════════════
 function startHeartbeat(){
-  async function beat(){if(!userKey)return;try{await fetch(`${WORKER}/heartbeat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:userKey})});}catch(e){}}
+  async function beat(){
+    if(!userKey)return;
+    try{
+      await db.collection('sessions').doc(userKey+'_session').set({
+        key: userKey,
+        lastSeen: new Date().toISOString(),
+        kicked: false
+      },{merge:true});
+    }catch(e){}
+  }
   beat();heartbeatInterval=setInterval(beat,15000);
 }
 
@@ -1464,15 +1772,31 @@ function showOverlay(id){['ovMaintenance','ovPremium','ovKey','ovKicked'].forEac
 // INIT
 // ══════════════════════════════════════════════════════
 async function init(){
-  // Load feed preview even before key
+  // Load feed preview even before key (from Firebase)
   try{
-    const fb=await fetchFirebaseResults();
-    if(fb.length){const sorted=[...fb].sort((a,b)=>b.period-a.period);const keyPrev=document.getElementById('keyFeedPreview');if(keyPrev&&sorted.length){keyPrev.innerHTML=sorted.slice(0,8).map((r,i)=>{const css=numCss(r.number);return`<div style="display:flex;gap:6px;font-size:7px;padding:1px 0;border-bottom:1px solid #050f05;"><span style="color:#3a6b3a">[${String(i).padStart(2,'0')}]</span><span style="font-family:Orbitron,monospace;font-weight:700;color:${css}">${r.number}</span><span style="color:${css}">${colorOf(r.number).toUpperCase()}</span><span style="color:${r.bigSmall==='BIG'?'#00ffea':'#ffe000'}">${r.bigSmall}</span></div>`;}).join('');}}
-    const api=await fetchWinGoAPI();if(api&&api.length){const keyPrev=document.getElementById('keyFeedPreview');if(keyPrev){const sorted=[...api].sort((a,b)=>b.period-a.period);keyPrev.innerHTML=sorted.slice(0,8).map((r,i)=>{const css=numCss(r.number);return`<div style="display:flex;gap:6px;font-size:7px;padding:1px 0;border-bottom:1px solid #050f05;"><span style="color:#3a6b3a">[${String(i).padStart(2,'0')}]</span><span style="font-family:Orbitron,monospace;font-weight:700;color:${css}">${r.number}</span><span style="color:${css}">${colorOf(r.number).toUpperCase()}</span><span style="color:${r.bigSmall==='BIG'?'#00ffea':'#ffe000'}">${r.bigSmall}</span></div>`;}).join('');}}
+    const fb = await db.collection('results').orderBy('period','desc').limit(8).get();
+    if(!fb.empty){
+      const keyPrev=document.getElementById('keyFeedPreview');
+      if(keyPrev){
+        keyPrev.innerHTML=fb.docs.map((d,i)=>{
+          const r=d.data();const css=numCss(r.number||0);
+          return`<div style="display:flex;gap:6px;font-size:7px;padding:1px 0;border-bottom:1px solid #050f05;">
+            <span style="color:#3a6b3a">[${String(i).padStart(2,'0')}]</span>
+            <span style="font-family:Orbitron,monospace;font-weight:700;color:${css}">${r.number}</span>
+            <span style="color:${css}">${colorOf(r.number||0).toUpperCase()}</span>
+            <span style="color:${r.bigSmall==='BIG'?'#00ffea':'#ffe000'}">${r.bigSmall||'--'}</span>
+          </div>`;
+        }).join('');
+      }
+    }
   }catch(e){}
-  // Restore session
-  const restored=await tryRestoreKey();
-  if(!restored)await loadSettings();
+
+  // Load settings first
+  await loadSettings();
+
+  // Try restore session key
+  const restored = await tryRestoreKey();
+  // If not restored, loadSettings already showed the right overlay
 }
 init();
 </script>
