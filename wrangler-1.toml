@@ -2,9 +2,5 @@ name = "newanashrawwingo"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 
-[vars]
-FIREBASE_PROJECT_ID = "anashrawdb"
-FIREBASE_API_KEY = "AIzaSyAEePSevU-3vNAP0nQN9EY4u7z628458sg"
-
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/5 * * * *"]
