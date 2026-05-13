@@ -695,12 +695,17 @@ db = firebase.firestore();
 // ══════════════════════════════════════════════════════
 // CLOCK
 // ══════════════════════════════════════════════════════
-setInterval(()=>{
-  const n=new Date(),p=x=>String(x).padStart(2,'0');
-  document.getElementById('clkm').textContent=`${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
-  const D=['SUN','MON','TUE','WED','THU','FRI','SAT'],M=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-  document.getElementById('clkd').textContent=`${D[n.getDay()]} ${p(n.getDate())} ${M[n.getMonth()]} ${n.getFullYear()}`;
-},1000);
+function startClock(){
+  function tick(){
+    const n=new Date(),p=x=>String(x).padStart(2,'0');
+    const clkm=document.getElementById('clkm');
+    const clkd=document.getElementById('clkd');
+    if(clkm)clkm.textContent=`${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`;
+    const D=['SUN','MON','TUE','WED','THU','FRI','SAT'],M=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    if(clkd)clkd.textContent=`${D[n.getDay()]} ${p(n.getDate())} ${M[n.getMonth()]} ${n.getFullYear()}`;
+  }
+  tick();clockInterval=setInterval(tick,1000);
+}
 
 // ══════════════════════════════════════════════════════
 // COUNTDOWN
@@ -876,6 +881,8 @@ async function pollWinGo(){
       resetCountdown();
       toast(`📡 New: ${sp(fresh[0].period)} → ${fresh[0].number} ${colorOf(fresh[0].number).toUpperCase()}`);
       document.getElementById('pollLbl').textContent='NEW!';
+      // User active hai — Firebase mein save karo (worker band rahega)
+      saveNewResultToFirebase(fresh[0]);
       if(userKey)doPredict();
     }else{
       document.getElementById('pollLbl').textContent='SAME';
@@ -896,6 +903,46 @@ async function pollWinGo(){
 function animatePoll(){
   const bar=document.getElementById('pollBar');let w=0;bar.style.width='0%';
   const iv=setInterval(()=>{w+=10;bar.style.width=Math.min(w,100)+'%';if(w>=100){clearInterval(iv);setTimeout(()=>bar.style.width='0%',200);}},30);
+}
+
+// ══════════════════════════════════════════════════════
+// SAVE NEW RESULT TO FIREBASE (when user is active)
+// Worker will skip — predictor saves directly
+// ══════════════════════════════════════════════════════
+async function saveNewResultToFirebase(result){
+  try{
+    const period = String(result.period);
+    const number = parseInt(result.number);
+    if(!period||isNaN(number)||number<0||number>9)return;
+
+    // Check if already saved
+    const existing = await db.collection('results').doc(period).get();
+    if(existing.exists)return;
+
+    // Save result
+    await db.collection('results').doc(period).set({
+      period,
+      number,
+      colour: colorOf(number),
+      bigSmall: sizeOf(number),
+      savedAt: new Date().toISOString(),
+      savedBy: 'predictor_client',
+    });
+
+    // Update meta/latest
+    await db.collection('meta').doc('latest').set({
+      period,
+      number,
+      colour: colorOf(number),
+      bigSmall: sizeOf(number),
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'predictor_client',
+    });
+
+    console.log(`Saved to Firebase: ${period} → ${number}`);
+  }catch(e){
+    console.log('Save to Firebase error:', e.message);
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1594,33 +1641,29 @@ async function sendLchatMsg(){
 // KEY VERIFICATION — Firebase Direct
 // ══════════════════════════════════════════════════════
 async function verifyKey(k){
-  k=(k||'').trim().toUpperCase();if(!k){setKeyErr('Enter your access key');return;}
-  setKeyErr('');const btn=document.getElementById('keyVerifyBtn');if(btn)btn.textContent='⏳ VERIFYING...';
+  k=(k||'').trim().toUpperCase();
+  if(!k){setKeyErr('Enter your access key');return;}
+  setKeyErr('');
+  const btn=document.getElementById('keyVerifyBtn');
+  if(btn)btn.textContent='⏳ VERIFYING...';
   try{
-    // Direct Firebase check
     const doc = await db.collection('keys').doc(k).get();
     let keyDoc = null;
     if(doc.exists){
       keyDoc = doc.data();
     } else {
-      // Fallback: search by key field
       const snap = await db.collection('keys').where('key','==',k).limit(1).get();
       if(!snap.empty) keyDoc = snap.docs[0].data();
     }
-
     if(!keyDoc){ setKeyErr('Invalid key — not found'); if(btn)btn.textContent='🔓 VERIFY KEY'; return; }
     if(keyDoc.blocked||keyDoc.status==='blocked'){ setKeyErr('Key is blocked'); if(btn)btn.textContent='🔓 VERIFY KEY'; return; }
     if(!keyDoc.lifetime && keyDoc.expiresAt){
       const exp = keyDoc.expiresAt.toDate ? keyDoc.expiresAt.toDate() : new Date(keyDoc.expiresAt);
       if(exp < new Date()){ setKeyErr('Key expired on '+exp.toLocaleDateString()); if(btn)btn.textContent='🔓 VERIFY KEY'; return; }
     }
-
-    // Get global settings for Q/day
     const settDoc = await db.collection('settings').doc('global').get();
     const settData = settDoc.exists ? settDoc.data() : {};
     const maxQ = keyDoc.questionsOverride || settData.questionsPerDay || 5;
-
-    // Get quota
     const today = new Date().toISOString().split('T')[0];
     let used = 0;
     try{
@@ -1628,7 +1671,6 @@ async function verifyKey(k){
       if(qDoc.exists) used = qDoc.data().used || 0;
     }catch(e){}
     const remaining = Math.max(0, maxQ - used);
-
     userKey = k;
     keyData = {
       label: keyDoc.label || k.slice(0,8),
@@ -1639,12 +1681,14 @@ async function verifyKey(k){
       lifetime: keyDoc.lifetime || false,
     };
     sessionStorage.setItem('aw_key', k);
+    localStorage.setItem('anashraw_key', k);
+    if(btn)btn.textContent='🔓 VERIFY KEY';
     onKeyVerified({ ok:true, data: keyData, remaining, max: maxQ });
   }catch(e){
     setKeyErr('Connection error — check internet');
-    console.error('verifyKey error:', e);
+    console.error('verifyKey error:', e.message);
+    if(btn)btn.textContent='🔓 VERIFY KEY';
   }
-  if(btn)btn.textContent='🔓 VERIFY KEY';
 }
 function setKeyErr(msg){['keyErr','premErr'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=msg;});}
 
@@ -1748,7 +1792,7 @@ function logout(){
   document.getElementById('app').classList.add('hidden');
   document.getElementById('chatBtn').classList.add('hidden');document.getElementById('adminChatBtn').classList.add('hidden');
   ['predLock','histLock','statsLock'].forEach(id=>document.getElementById(id).classList.remove('hidden'));
-  ['predContent','histContent','statsContent','histWrap'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  ['predContent','statsContent','histWrap'].forEach(id=>{const el=document.getElementById(id);if(el)el.classList.add('hidden');});
   loadSettings();toast('Logged out');
 }
 
@@ -1772,7 +1816,13 @@ function showOverlay(id){['ovMaintenance','ovPremium','ovKey','ovKicked'].forEac
 // INIT
 // ══════════════════════════════════════════════════════
 async function init(){
-  // Load feed preview even before key (from Firebase)
+  // Firebase init check
+  try{ db.collection('settings'); }catch(e){ console.error('Firebase init failed'); }
+
+  // Start clock
+  startClock();
+
+  // Load feed preview from Firebase before key (login page preview)
   try{
     const fb = await db.collection('results').orderBy('period','desc').limit(8).get();
     if(!fb.empty){
@@ -1791,12 +1841,11 @@ async function init(){
     }
   }catch(e){}
 
-  // Load settings first
+  // Load settings (shows correct overlay)
   await loadSettings();
 
   // Try restore session key
-  const restored = await tryRestoreKey();
-  // If not restored, loadSettings already showed the right overlay
+  await tryRestoreKey();
 }
 init();
 </script>
